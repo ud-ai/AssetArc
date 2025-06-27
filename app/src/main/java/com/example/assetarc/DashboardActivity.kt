@@ -17,15 +17,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.assetarc.ui.theme.AssetArcTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URL
 import com.example.assetarc.BuildConfig
+import androidx.compose.runtime.rememberCoroutineScope
 
 sealed class AssetType { object Stock : AssetType(); object Crypto : AssetType() }
 data class PortfolioItem(val type: AssetType, val symbol: String, val quantity: Double, val price: Double)
@@ -48,7 +51,9 @@ fun DashboardScreen() {
     var totalBalance by remember { mutableStateOf(0.0) }
     var loading by remember { mutableStateOf(false) }
     var apiKey by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     // Prompt for API key if not set
     LaunchedEffect(Unit) {
@@ -65,6 +70,26 @@ fun DashboardScreen() {
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF17212B))) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // Move search bar to the top
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                label = { Text("Search portfolio...") },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF3390EC),
+                    unfocusedBorderColor = Color(0xFF232E3C),
+                    cursorColor = Color(0xFF3390EC),
+                    focusedLabelColor = Color(0xFF3390EC),
+                    unfocusedLabelColor = Color(0xFFAEBACB),
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                )
+            )
+            Divider(color = Color(0xFF232E3C), thickness = 1.dp, modifier = Modifier.padding(bottom = 8.dp))
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -85,13 +110,19 @@ fun DashboardScreen() {
                 fontSize = 20.sp,
                 modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 8.dp)
             )
+            val filteredPortfolio = portfolio.filter {
+                searchQuery.isBlank() ||
+                it.symbol.contains(searchQuery, ignoreCase = true) ||
+                (it.type is AssetType.Stock && "stock".contains(searchQuery, ignoreCase = true)) ||
+                (it.type is AssetType.Crypto && "crypto".contains(searchQuery, ignoreCase = true))
+            }
             LazyColumn(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
-                if (portfolio.isEmpty()) {
+                if (filteredPortfolio.isEmpty()) {
                     item {
                         Text("No assets yet. Add stocks or crypto!", color = Color(0xFFAEBACB), modifier = Modifier.padding(16.dp))
                     }
                 } else {
-                    items(portfolio) { item ->
+                    items(filteredPortfolio) { item ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -139,13 +170,14 @@ fun DashboardScreen() {
                 onAdd = { type, symbol, qty ->
                     showAddDialog = false
                     loading = true
-                    // Fetch price from Finnhub
-                    fetchFinnhubPrice(symbol, type, apiKey, context) { price ->
-                        loading = false
-                        if (price != null) {
-                            portfolio = portfolio + PortfolioItem(type, symbol.uppercase(), qty, price)
-                        } else {
-                            Toast.makeText(context, "Failed to fetch price for $symbol", Toast.LENGTH_LONG).show()
+                    coroutineScope.launch {
+                        fetchFinnhubPrice(symbol, type, apiKey, context) { price ->
+                            loading = false
+                            if (price != null) {
+                                portfolio = portfolio + PortfolioItem(type, symbol.uppercase(), qty, price)
+                            } else {
+                                Toast.makeText(context, "Failed to fetch price for $symbol", Toast.LENGTH_LONG).show()
+                            }
                         }
                     }
                 },
@@ -159,24 +191,19 @@ fun promptForApiKey(context: Context): String {
     return BuildConfig.FINNHUB_API_KEY
 }
 
-fun fetchFinnhubPrice(symbol: String, type: AssetType, apiKey: String, context: Context, onResult: (Double?) -> Unit) {
-    // For stocks: symbol as is (e.g. AAPL)
-    // For crypto: format as BINANCE:BTCUSDT
+suspend fun fetchFinnhubPrice(symbol: String, type: AssetType, apiKey: String, context: Context, onResult: (Double?) -> Unit) {
     val querySymbol = if (type is AssetType.Crypto) "BINANCE:${symbol.uppercase()}USDT" else symbol.uppercase()
     val url = "https://finnhub.io/api/v1/quote?symbol=$querySymbol&token=$apiKey"
-    // Use coroutine to fetch
-    androidx.lifecycle.lifecycleScope.launchWhenCreated {
-        val price = withContext(Dispatchers.IO) {
-            try {
-                val response = URL(url).readText()
-                val json = JSONObject(response)
-                json.optDouble("c", Double.NaN).takeIf { !it.isNaN() }
-            } catch (e: Exception) {
-                null
-            }
+    val price = withContext(Dispatchers.IO) {
+        try {
+            val response = URL(url).readText()
+            val json = JSONObject(response)
+            json.optDouble("c", Double.NaN).takeIf { !it.isNaN() }
+        } catch (e: Exception) {
+            null
         }
-        onResult(price)
     }
+    onResult(price)
 }
 
 @Composable
