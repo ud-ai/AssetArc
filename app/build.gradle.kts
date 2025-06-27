@@ -17,6 +17,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val finnhubApiKey: String? = project.findProperty("FINNHUB_API_KEY") as String?
+        buildConfigField("String", "FINNHUB_API_KEY", finnhubApiKey?.let { '"' + it + '"' } ?: '""')
     }
 
     buildTypes {

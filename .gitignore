@@ -12,4 +12,6 @@
 /captures
 .externalNativeBuild
 .cxx
-local.properties
+
+# Ignore Firebase config in app module
+app/google-services.json

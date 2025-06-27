@@ -49,6 +49,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import kotlin.math.hypot
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.window.Dialog
 
 class LoginActivity : ComponentActivity() {
     private lateinit var auth: FirebaseAuth
@@ -72,7 +75,37 @@ class LoginActivity : ComponentActivity() {
                 ) {
                     AuthScreen(
                         onGoogleAuth = { signInWithGoogle() },
-                        onPhoneAuth = { isSignUp -> showPhoneDialog(isSignUp) },
+                        onPhoneAuth = { isSignUp, phone ->
+                            // Use Firebase phone auth flow
+                            val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+                                override fun onVerificationCompleted(credential: PhoneAuthCredential) {
+                                    signInWithPhoneCredential(credential)
+                                }
+                                override fun onVerificationFailed(e: FirebaseException) {
+                                    Toast.makeText(this@LoginActivity, "Phone auth failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                }
+                                override fun onCodeSent(verificationId: String, token: PhoneAuthProvider.ForceResendingToken) {
+                                    // Show dialog to enter OTP
+                                    val otpInput = EditText(this@LoginActivity)
+                                    otpInput.hint = "Enter OTP"
+                                    AlertDialog.Builder(this@LoginActivity)
+                                        .setTitle("Enter OTP")
+                                        .setView(otpInput)
+                                        .setPositiveButton("Verify") { _, _ ->
+                                            val otp = otpInput.text.toString().trim()
+                                            val credential = PhoneAuthProvider.getCredential(verificationId, otp)
+                                            signInWithPhoneCredential(credential)
+                                        }
+                                        .setNegativeButton("Cancel", null)
+                                        .show()
+                                }
+                            }
+                            PhoneAuthProvider.getInstance().verifyPhoneNumber(
+                                phone, 60, java.util.concurrent.TimeUnit.SECONDS, this@LoginActivity, callbacks)
+                        },
+                        onEmailAuth = { isSignUp, email, password ->
+                            if (isSignUp) signUpWithEmail(email, password) else signInWithEmail(email, password)
+                        },
                         darkMode = darkMode,
                         onToggleDarkMode = { darkMode = !darkMode }
                     )
@@ -106,77 +139,46 @@ class LoginActivity : ComponentActivity() {
                 if (task.isSuccessful) {
                     val user = auth.currentUser
                     Toast.makeText(this, "Signed in as: ${user?.displayName}", Toast.LENGTH_LONG).show()
+                    startActivity(Intent(this, DashboardActivity::class.java))
+                    finish()
                 } else {
                     Toast.makeText(this, "Firebase auth failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
                 }
             }
     }
 
-    private fun showPhoneDialog(isSignUp: Boolean) {
-        val context = this
-        val phoneInput = EditText(context)
-        phoneInput.hint = "+1234567890"
-        val layout = LinearLayout(context)
-        layout.orientation = LinearLayout.VERTICAL
-        layout.setPadding(50, 40, 50, 10)
-        layout.addView(phoneInput)
-        AlertDialog.Builder(context)
-            .setTitle(if (isSignUp) "Sign up with Phone" else "Sign in with Phone")
-            .setView(layout)
-            .setPositiveButton("Send OTP") { _, _ ->
-                val phone = phoneInput.text.toString().trim()
-                if (phone.isNotEmpty()) {
-                    sendOtp(phone, isSignUp)
+    // Add these functions to handle email and phone auth, launching DashboardActivity on success
+    private fun signInWithEmail(email: String, password: String) {
+        auth.signInWithEmailAndPassword(email, password)
+            .addOnCompleteListener(this) { task ->
+                if (task.isSuccessful) {
+                    Toast.makeText(this, "Signed in as: ${auth.currentUser?.email}", Toast.LENGTH_LONG).show()
+                    startActivity(Intent(this, DashboardActivity::class.java))
+                    finish()
                 } else {
-                    Toast.makeText(context, "Invalid phone number", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Email sign in failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
-
-    private fun sendOtp(phone: String, isSignUp: Boolean) {
-        val context = this
-        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                signInWithPhoneAuthCredential(credential)
+    private fun signUpWithEmail(email: String, password: String) {
+        auth.createUserWithEmailAndPassword(email, password)
+            .addOnCompleteListener(this) { task ->
+                if (task.isSuccessful) {
+                    Toast.makeText(this, "Account created: ${auth.currentUser?.email}", Toast.LENGTH_LONG).show()
+                    startActivity(Intent(this, DashboardActivity::class.java))
+                    finish()
+                } else {
+                    Toast.makeText(this, "Email sign up failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                }
             }
-            override fun onVerificationFailed(e: FirebaseException) {
-                Toast.makeText(context, "Phone auth failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-            override fun onCodeSent(verificationId: String, token: PhoneAuthProvider.ForceResendingToken) {
-                showOtpDialog(verificationId)
-            }
-        }
-        PhoneAuthProvider.getInstance().verifyPhoneNumber(
-            phone, 60, TimeUnit.SECONDS, this, callbacks)
     }
-
-    private fun showOtpDialog(verificationId: String) {
-        val context = this
-        val otpInput = EditText(context)
-        otpInput.hint = "Enter OTP"
-        val layout = LinearLayout(context)
-        layout.orientation = LinearLayout.VERTICAL
-        layout.setPadding(50, 40, 50, 10)
-        layout.addView(otpInput)
-        AlertDialog.Builder(context)
-            .setTitle("Enter OTP")
-            .setView(layout)
-            .setPositiveButton("Verify") { _, _ ->
-                val otp = otpInput.text.toString().trim()
-                val credential = PhoneAuthProvider.getCredential(verificationId, otp)
-                signInWithPhoneAuthCredential(credential)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun signInWithPhoneAuthCredential(credential: PhoneAuthCredential) {
+    private fun signInWithPhoneCredential(credential: PhoneAuthCredential) {
         auth.signInWithCredential(credential)
             .addOnCompleteListener(this) { task ->
                 if (task.isSuccessful) {
-                    Toast.makeText(this, "Signed in as: ${auth.currentUser?.phoneNumber}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Phone sign in success: ${auth.currentUser?.phoneNumber}", Toast.LENGTH_LONG).show()
+                    startActivity(Intent(this, DashboardActivity::class.java))
+                    finish()
                 } else {
                     Toast.makeText(this, "Phone sign in failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
                 }
@@ -187,51 +189,83 @@ class LoginActivity : ComponentActivity() {
 @Composable
 fun AuthScreen(
     onGoogleAuth: () -> Unit,
-    onPhoneAuth: (Boolean) -> Unit,
+    onPhoneAuth: (Boolean, String) -> Unit,
+    onEmailAuth: (Boolean, String, String) -> Unit,
     darkMode: Boolean,
     onToggleDarkMode: () -> Unit
 ) {
     var isSignUp by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
+    var showPhoneDialog by remember { mutableStateOf(false) }
+    var phoneInput by remember { mutableStateOf("") }
+    var showEmailDialog by remember { mutableStateOf(false) }
+    var emailInput by remember { mutableStateOf("") }
+    var passwordInput by remember { mutableStateOf("") }
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    // Telegram-inspired colors
+    val telegramDarkBg = Color(0xFF17212B)
+    val telegramDarkCard = Color(0xFF232E3C)
+    val telegramAccent = Color(0xFF3390EC)
+    val telegramTextPrimary = Color.White
+    val telegramTextSecondary = Color(0xFFAEBACB)
+    val telegramDivider = Color(0xFF232E3C)
+    val telegramLightBg = Color(0xFFe0eafc)
+    val telegramLightCard = Color.White
+    val telegramLightText = Color(0xFF232526)
+
     // For radial reveal animation
     var togglePos by remember { mutableStateOf(Offset.Zero) }
     var reveal by remember { mutableStateOf(false) }
-    val configuration = LocalConfiguration.current
-    val density = LocalDensity.current
-    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
-    val maxRadius = hypot(screenWidthPx, screenHeightPx)
+    var revealCenter by remember { mutableStateOf(Offset.Zero) }
+    var revealRadius by remember { mutableStateOf(0f) }
+    var boxSize by remember { mutableStateOf(Size.Zero) }
     val animProgress by animateFloatAsState(
         targetValue = if (reveal) 1f else 0f,
-        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing)
+        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
     )
     LaunchedEffect(reveal, darkMode) {
         if (reveal) {
-            kotlinx.coroutines.delay(1000)
+            kotlinx.coroutines.delay(900)
             reveal = false
         }
     }
     val backgroundBrush = if (animProgress > 0f && animProgress < 1f) {
+        val fromColor = if (!darkMode) telegramDarkBg else telegramLightBg
+        val toColor = if (darkMode) telegramDarkBg else telegramLightBg
         Brush.radialGradient(
-            colors = if (darkMode) listOf(Color(0xFF232526), Color.Transparent) else listOf(Color(0xFFe0eafc), Color.Transparent),
-            center = togglePos,
-            radius = (maxRadius * animProgress) + 200f
+            colors = listOf(lerp(fromColor, toColor, animProgress), Color.Transparent),
+            center = revealCenter,
+            radius = revealRadius * animProgress
         )
     } else {
         Brush.verticalGradient(
-            colors = if (darkMode) listOf(Color(0xFF232526), Color(0xFF414345))
-            else listOf(Color(0xFFe0eafc), Color(0xFFcfdef3))
+            colors = if (darkMode) listOf(telegramDarkBg, telegramDarkCard)
+            else listOf(telegramLightBg, telegramLightCard)
         )
     }
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundBrush)
+            .onGloballyPositioned { coordinates ->
+                boxSize = Size(
+                    width = coordinates.size.width.toFloat(),
+                    height = coordinates.size.height.toFloat()
+                )
+            }
     ) {
         IconButton(
             onClick = {
+                revealCenter = togglePos
+                // Calculate the farthest distance from the toggle to a corner
+                val distances = listOf(
+                    revealCenter.getDistance(Offset(0f, 0f)),
+                    revealCenter.getDistance(Offset(boxSize.width, 0f)),
+                    revealCenter.getDistance(Offset(0f, boxSize.height)),
+                    revealCenter.getDistance(Offset(boxSize.width, boxSize.height))
+                )
+                revealRadius = distances.maxOrNull() ?: 0f
                 reveal = true
                 onToggleDarkMode()
             },
@@ -248,7 +282,7 @@ fun AuthScreen(
             Icon(
                 imageVector = if (darkMode) Icons.Filled.Brightness7 else Icons.Filled.Brightness4,
                 contentDescription = "Toggle dark mode",
-                tint = Color.Red
+                tint = telegramAccent
             )
         }
         Column(
@@ -256,9 +290,10 @@ fun AuthScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // SVG logo removed, native UI only
             Crossfade(targetState = loading, label = "auth_loading") { isLoading ->
                 if (isLoading) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(color = telegramAccent)
                 } else {
                     Card(
                         modifier = Modifier
@@ -269,7 +304,7 @@ fun AuthScreen(
                             .verticalScroll(scrollState),
                         elevation = CardDefaults.cardElevation(12.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (darkMode) Color(0xFF232526) else Color.White
+                            containerColor = if (darkMode) telegramDarkCard else telegramLightCard
                         )
                     ) {
                         Column(
@@ -278,24 +313,199 @@ fun AuthScreen(
                             modifier = Modifier.padding(16.dp)
                         ) {
                             Text(
-                                text = if (isSignUp) "Create Account" else "Welcome Back!",
+                                text = "Welcome Back!",
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (darkMode) Color.White else MaterialTheme.colorScheme.primary
+                                color = if (darkMode) telegramTextPrimary else telegramLightText
                             )
                             Spacer(modifier = Modifier.height(32.dp))
-                            GoogleAuthButton(onClick = onGoogleAuth)
+                            GoogleAuthButton(onClick = onGoogleAuth, accentColor = telegramAccent)
                             Spacer(modifier = Modifier.height(16.dp))
-                            PhoneAuthButton(isSignUp = isSignUp, onClick = { onPhoneAuth(isSignUp) })
+                            Button(
+                                onClick = { showEmailDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = telegramAccent.copy(red = 0.7f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                            ) {
+                                Icon(Icons.Default.Email, contentDescription = null, tint = Color.White)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    if (isSignUp) "Sign up with Email" else "Sign in with Email",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                             Spacer(modifier = Modifier.height(16.dp))
-                            AppleAuthButton()
+                            PhoneAuthButton(isSignUp = isSignUp, onClick = { showPhoneDialog = true }, accentColor = telegramAccent)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            AppleAuthButton(accentColor = telegramAccent)
                             Spacer(modifier = Modifier.height(32.dp))
+                            Divider(color = telegramDivider.copy(alpha = 0.2f))
                             TextButton(onClick = { isSignUp = !isSignUp }) {
                                 Text(
                                     if (isSignUp) "Already have an account? Log In" else "Don't have an account? Sign Up",
-                                    color = MaterialTheme.colorScheme.secondary
+                                    color = telegramAccent
                                 )
                             }
+                        }
+                    }
+                }
+            }
+        }
+        // Modern Compose-based phone input dialog
+        if (showPhoneDialog) {
+            Dialog(onDismissRequest = { showPhoneDialog = false }) {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (darkMode) telegramDarkCard else telegramLightCard
+                    ),
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(0.95f)
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        IconButton(
+                            onClick = { showPhoneDialog = false },
+                            modifier = Modifier.align(Alignment.TopEnd)
+                        ) {
+                            Icon(Icons.Default.Brightness7, contentDescription = "Close", tint = telegramAccent)
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (isSignUp) "Sign up with Phone" else "Sign in with Phone",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = if (darkMode) telegramTextPrimary else telegramLightText
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = phoneInput,
+                            onValueChange = { phoneInput = it },
+                            label = { Text("Phone Number") },
+                            placeholder = { Text("+1234567890") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = telegramAccent,
+                                unfocusedBorderColor = telegramDivider,
+                                cursorColor = telegramAccent,
+                                focusedLabelColor = telegramAccent,
+                                unfocusedLabelColor = telegramTextSecondary,
+                                focusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText,
+                                unfocusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = {
+                                if (phoneInput.isNotEmpty()) {
+                                    showPhoneDialog = false
+                                    onPhoneAuth(isSignUp, phoneInput)
+                                } else {
+                                    Toast.makeText(context, "Invalid phone number", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = telegramAccent),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Send OTP", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+        // Modern Compose-based email input dialog
+        if (showEmailDialog) {
+            Dialog(onDismissRequest = { showEmailDialog = false }) {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (darkMode) telegramDarkCard else telegramLightCard
+                    ),
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(0.95f)
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        IconButton(
+                            onClick = { showEmailDialog = false },
+                            modifier = Modifier.align(Alignment.TopEnd)
+                        ) {
+                            Icon(Icons.Default.Brightness7, contentDescription = "Close", tint = telegramAccent)
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (isSignUp) "Sign up with Email" else "Sign in with Email",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = if (darkMode) telegramTextPrimary else telegramLightText
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = emailInput,
+                            onValueChange = { emailInput = it },
+                            label = { Text("Email") },
+                            placeholder = { Text("example@email.com") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = telegramAccent,
+                                unfocusedBorderColor = telegramDivider,
+                                cursorColor = telegramAccent,
+                                focusedLabelColor = telegramAccent,
+                                unfocusedLabelColor = telegramTextSecondary,
+                                focusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText,
+                                unfocusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = passwordInput,
+                            onValueChange = { passwordInput = it },
+                            label = { Text("Password") },
+                            placeholder = { Text("Password") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = telegramAccent,
+                                unfocusedBorderColor = telegramDivider,
+                                cursorColor = telegramAccent,
+                                focusedLabelColor = telegramAccent,
+                                unfocusedLabelColor = telegramTextSecondary,
+                                focusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText,
+                                unfocusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = {
+                                if (emailInput.isNotEmpty() && passwordInput.isNotEmpty()) {
+                                    showEmailDialog = false
+                                    onEmailAuth(isSignUp, emailInput, passwordInput)
+                                } else {
+                                    Toast.makeText(context, "Invalid email or password", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = telegramAccent),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(if (isSignUp) "Sign Up" else "Sign In", color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -304,11 +514,15 @@ fun AuthScreen(
     }
 }
 
+private fun Offset.getDistance(other: Offset): Float {
+    return kotlin.math.sqrt((x - other.x) * (x - other.x) + (y - other.y) * (y - other.y))
+}
+
 @Composable
-fun GoogleAuthButton(onClick: () -> Unit) {
+fun GoogleAuthButton(onClick: () -> Unit, accentColor: Color) {
     Button(
         onClick = onClick,
-        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4285F4)),
+        colors = ButtonDefaults.buttonColors(containerColor = accentColor),
         modifier = Modifier
             .fillMaxWidth()
             .height(50.dp)
@@ -319,27 +533,7 @@ fun GoogleAuthButton(onClick: () -> Unit) {
 }
 
 @Composable
-fun PhoneAuthButton(isSignUp: Boolean, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF34A853)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(50.dp)
-            .clip(RoundedCornerShape(12.dp))
-    ) {
-        Icon(Icons.Default.Phone, contentDescription = null, tint = Color.White)
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            if (isSignUp) "Sign up with Phone" else "Sign in with Phone",
-            color = Color.White,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-@Composable
-fun AppleAuthButton() {
+fun AppleAuthButton(accentColor: Color) {
     Button(
         onClick = {},
         colors = ButtonDefaults.buttonColors(containerColor = Color.Black),
@@ -350,5 +544,23 @@ fun AppleAuthButton() {
         enabled = false // Apple Sign-In is not available on Android
     ) {
         Text("Continue with Apple (iOS only)", color = Color.White, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun PhoneAuthButton(isSignUp: Boolean, onClick: () -> Unit, accentColor: Color) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .clip(RoundedCornerShape(12.dp))
+    ) {
+        Text(
+            if (isSignUp) "Sign up with Phone" else "Sign in with Phone",
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
     }
 } 
