@@ -48,6 +48,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 
 class IndianStocksActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,11 +74,28 @@ fun IndianStocksScreen() {
     var topGainers by remember { mutableStateOf<List<TrendingStock>>(emptyList()) }
     var topLosers by remember { mutableStateOf<List<TrendingStock>>(emptyList()) }
     var trendingStocks by remember { mutableStateOf<List<TrendingStock>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
+    var dataLoading by remember { mutableStateOf(true) }
     
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val stockService = remember { IndianStockService() }
+    val viewModel = remember { PortfolioViewModel.getInstance() }
+    val portfolio by viewModel.portfolio.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+    val error by viewModel.error.collectAsState()
+
+    // Start real-time price updates
+    LaunchedEffect(Unit) {
+        viewModel.loadPortfolio(context)
+        viewModel.startRealTimeUpdates(context)
+    }
+    
+    // Stop real-time updates when the screen is destroyed
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.stopRealTimeUpdates()
+        }
+    }
 
     // Load data on first launch
     LaunchedEffect(Unit) {
@@ -85,10 +105,10 @@ fun IndianStocksScreen() {
                 topGainers = stockService.getTopGainers()
                 topLosers = stockService.getTopLosers()
                 trendingStocks = stockService.getTrendingStocks()
-                loading = false
+                dataLoading = false
             } catch (e: Exception) {
                 Log.e("IndianStocksActivity", "Error loading data", e)
-                loading = false
+                dataLoading = false
             }
         }
     }
@@ -158,6 +178,59 @@ fun IndianStocksScreen() {
                     }
                     
                     Spacer(modifier = Modifier.height(24.dp))
+                    
+                    // Portfolio Preview
+                    val indianStocksInPortfolio = portfolio.filter { it.type is AssetType.IndianStock }
+                    if (indianStocksInPortfolio.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    "Your Indian Stocks",
+                                    color = Color.White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                indianStocksInPortfolio.take(3).forEach { item ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            item.symbol,
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            "₹${String.format("%.2f", item.price)}",
+                                            color = Color.White,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                    if (item != indianStocksInPortfolio.take(3).last()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                    }
+                                }
+                                
+                                if (indianStocksInPortfolio.size > 3) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        "+${indianStocksInPortfolio.size - 3} more",
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
                     
                     // Market overview card
                     marketOverview?.let { overview ->
@@ -392,7 +465,7 @@ fun IndianStocksScreen() {
             }
         }
         
-        if (loading) {
+        if (dataLoading) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -644,6 +717,10 @@ fun MarketContent(overview: MarketOverview?) {
 
 @Composable
 fun StockListItem(stock: TrendingStock, onClick: () -> Unit) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val viewModel = viewModel<PortfolioViewModel>()
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -657,7 +734,7 @@ fun StockListItem(stock: TrendingStock, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(stock.symbol, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Text(stock.name, color = Color(0xFF9CA3AF), fontSize = 14.sp)
             }
@@ -669,8 +746,82 @@ fun StockListItem(stock: TrendingStock, onClick: () -> Unit) {
                     fontSize = 14.sp
                 )
             }
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = { showAddDialog = true },
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF10B981))
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Add to Portfolio",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
+    
+    if (showAddDialog) {
+        AddIndianStockDialog(
+            stock = stock,
+            onAdd = { quantity ->
+                viewModel.addAsset(AssetType.IndianStock, stock.symbol, quantity, context)
+                showAddDialog = false
+            },
+            onDismiss = { showAddDialog = false }
+        )
+    }
+}
+
+@Composable
+fun AddIndianStockDialog(stock: TrendingStock, onAdd: (Double) -> Unit, onDismiss: () -> Unit) {
+    var quantity by remember { mutableStateOf("") }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add ${stock.symbol} to Portfolio", color = Color.White) },
+        text = {
+            Column {
+                Text(
+                    "Current Price: ₹${String.format("%.2f", stock.price)}",
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = quantity,
+                    onValueChange = { quantity = it },
+                    label = { Text("Quantity") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF10B981),
+                        unfocusedBorderColor = Color(0xFF374151),
+                        cursorColor = Color(0xFF10B981),
+                        focusedLabelColor = Color(0xFF10B981),
+                        unfocusedLabelColor = Color(0xFF9CA3AF),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val qty = quantity.toDoubleOrNull() ?: 1.0
+                    if (qty > 0) onAdd(qty)
+                }
+            ) { Text("Add", color = Color(0xFF10B981)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Color(0xFF9CA3AF)) }
+        },
+        containerColor = Color(0xFF1F2937),
+        titleContentColor = Color.White,
+        textContentColor = Color.White
+    )
 }
 
 @Composable

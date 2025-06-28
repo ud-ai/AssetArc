@@ -16,7 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -57,16 +57,25 @@ fun DashboardScreen() {
     var showSearchResults by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     
-    val viewModel: PortfolioViewModel = viewModel()
+    val viewModel = remember { PortfolioViewModel.getInstance() }
     val portfolio by viewModel.portfolio.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
+    val isRealTimeUpdatesEnabled by viewModel.isRealTimeUpdatesEnabled.collectAsState()
     val context = LocalContext.current
     
-    // Update prices periodically
+    // Start real-time price updates when the screen is created
     LaunchedEffect(Unit) {
         viewModel.loadPortfolio(context) // Load portfolio from persistent storage
-        viewModel.updatePrices(context)
+        viewModel.updatePrices(context) // Initial price update
+        viewModel.startRealTimeUpdates(context) // Start real-time updates
+    }
+    
+    // Stop real-time updates when the screen is destroyed
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.stopRealTimeUpdates()
+        }
     }
 
     // Search functionality
@@ -185,14 +194,54 @@ fun DashboardScreen() {
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Text(
-                        "Your Investment Dashboard",
-                        color = Color(0xFF9CA3AF),
-                        fontSize = 16.sp
-                    )
-                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Your Investment Dashboard",
+                            color = Color(0xFF9CA3AF),
+                            fontSize = 16.sp
+                        )
+                        if (isRealTimeUpdatesEnabled) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(
+                                            color = Color(0xFF10B981),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                )
+                                Text(
+                                    "LIVE",
+                                    color = Color(0xFF10B981),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        
+                        // Manual refresh button
+                        IconButton(
+                            onClick = {
+                                viewModel.updatePrices(context)
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh Prices",
+                                tint = Color(0xFF3B82F6),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
-                    
                     // Portfolio Summary
                     val summary = viewModel.getPortfolioSummary()
                     Row(
@@ -310,6 +359,7 @@ fun DashboardScreen() {
 @Composable
 fun OverviewTab(viewModel: PortfolioViewModel) {
     val context = LocalContext.current
+    val portfolio by viewModel.portfolio.collectAsState()
     
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
@@ -412,11 +462,6 @@ fun OverviewTab(viewModel: PortfolioViewModel) {
                 }
             }
         }
-        
-        item {
-            // Portfolio Chart
-            PortfolioChart(viewModel.portfolio.value)
-        }
     }
 }
 
@@ -447,9 +492,25 @@ fun PortfolioTab(viewModel: PortfolioViewModel) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     "Add assets to start tracking",
-                    color = Color(0xFF9CA3AF),
+                    color = Color(0xFF6B7280),
                     fontSize = 14.sp
                 )
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // Test button for debugging
+                Button(
+                    onClick = {
+                        viewModel.addAsset(
+                            AssetType.IndianStock,
+                            "RELIANCE",
+                            10.0,
+                            context
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
+                ) {
+                    Text("Test Add RELIANCE", color = Color.White)
+                }
             }
         }
     } else {
@@ -949,169 +1010,6 @@ fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
                 color = if (result.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
                 fontSize = 14.sp
             )
-        }
-    }
-}
-
-@Composable
-fun PortfolioChart(portfolio: List<PortfolioItem>) {
-    if (portfolio.isEmpty()) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .padding(20.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.ShowChart,
-                        contentDescription = "Chart",
-                        tint = Color(0xFF6B7280),
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Add assets to see portfolio chart",
-                        color = Color(0xFF9CA3AF),
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        }
-    } else {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text(
-                    "Portfolio Performance",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                
-                // Simple portfolio chart
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(150.dp)
-                        .padding(16.dp)
-                ) {
-                    val width = size.width
-                    val height = size.height
-                    
-                    // Calculate portfolio values over time (mock data)
-                    val portfolioValues = (0..7).map { day ->
-                        val baseValue = portfolio.sumOf { it.quantity * it.price }
-                        val randomChange = (Math.random() - 0.5) * 0.05 // ±2.5% change
-                        baseValue * (1 + randomChange)
-                    }
-                    
-                    val minValue = portfolioValues.minOrNull() ?: 0.0
-                    val maxValue = portfolioValues.maxOrNull() ?: 0.0
-                    val valueRange = maxValue - minValue
-                    
-                    if (valueRange > 0) {
-                        // Draw grid lines
-                        val gridColor = Color(0xFF374151)
-                        
-                        // Horizontal grid lines
-                        for (i in 0..3) {
-                            val y = height * i / 3
-                            drawLine(
-                                color = gridColor,
-                                start = Offset(0f, y),
-                                end = Offset(width, y),
-                                strokeWidth = 1f
-                            )
-                        }
-                        
-                        // Draw portfolio line
-                        val lineColor = Color(0xFF3B82F6)
-                        
-                        val path = Path()
-                        var isFirst = true
-                        
-                        portfolioValues.forEachIndexed { index, value ->
-                            val x = width * index.toFloat() / (portfolioValues.size - 1).toFloat()
-                            val y = height - (height * ((value - minValue) / valueRange).toFloat())
-                            
-                            if (isFirst) {
-                                path.moveTo(x, y)
-                                isFirst = false
-                            } else {
-                                path.lineTo(x, y)
-                            }
-                        }
-                        
-                        drawPath(
-                            path = path,
-                            color = lineColor,
-                            style = Stroke(width = 3f)
-                        )
-                        
-                        // Draw area under the line
-                        val areaColor = Color(0xFF3B82F6).copy(alpha = 0.2f)
-                        
-                        val areaPath = Path()
-                        areaPath.addPath(path)
-                        areaPath.lineTo(width, height)
-                        areaPath.lineTo(0f, height)
-                        areaPath.close()
-                        drawPath(path = areaPath, color = areaColor)
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Portfolio summary
-                val totalValue = portfolio.sumOf { it.quantity * it.price }
-                val totalChange = portfolio.sumOf { it.quantity * it.change }
-                val totalChangePercent = if (totalValue > 0) (totalChange / totalValue) * 100 else 0.0
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text(
-                            "Total Value",
-                            color = Color(0xFF9CA3AF),
-                            fontSize = 12.sp
-                        )
-                        Text(
-                            "₹${String.format("%.2f", totalValue)}",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            "Today's Change",
-                            color = Color(0xFF9CA3AF),
-                            fontSize = 12.sp
-                        )
-                        Text(
-                            "${String.format("%.2f", totalChangePercent)}%",
-                            color = if (totalChangePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
         }
     }
 } 

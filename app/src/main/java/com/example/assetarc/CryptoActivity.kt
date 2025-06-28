@@ -1,8 +1,10 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
 package com.example.assetarc
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,12 +33,19 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
+import android.widget.Toast
 
 // Mock data classes
 
 data class CryptoTrending(val symbol: String, val name: String, val price: Double, val change: Double, val changePercent: Double)
 
 class CryptoActivity : ComponentActivity() {
+    private val portfolioViewModel: PortfolioViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -47,25 +56,73 @@ class CryptoActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CryptoScreen() {
     var selectedTab by remember { mutableStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<CryptoTrending>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
+    var searchResults by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var trending by remember { mutableStateOf<List<CryptoTrending>>(emptyList()) }
+    var topGainers by remember { mutableStateOf<List<CryptoTrending>>(emptyList()) }
+    var topLosers by remember { mutableStateOf<List<CryptoTrending>>(emptyList()) }
     var showAddDialog by remember { mutableStateOf(false) }
-    var portfolio by remember { mutableStateOf(listOf<CryptoTrending>()) }
-
+    
     val context = LocalContext.current
-    val trending = remember { listOf(
+    val portfolioViewModel = remember { PortfolioViewModel.getInstance() }
+    val portfolio by portfolioViewModel.portfolio.collectAsState()
+    val loadingPortfolio by portfolioViewModel.loading.collectAsState()
+    val error by portfolioViewModel.error.collectAsState()
+
+    val trendingCryptos = remember { listOf(
         CryptoTrending("BTC", "Bitcoin", 45000.0, 500.0, 1.1),
-        CryptoTrending("ETH", "Ethereum", 3000.0, -50.0, -1.6),
-        CryptoTrending("BNB", "Binance Coin", 400.0, 10.0, 2.5),
-        CryptoTrending("ADA", "Cardano", 0.5, 0.01, 2.0),
-        CryptoTrending("SOL", "Solana", 100.0, -2.0, -1.9)
+        CryptoTrending("ETH", "Ethereum", 2800.0, -50.0, -1.75),
+        CryptoTrending("BNB", "Binance Coin", 320.0, 15.0, 4.92),
+        CryptoTrending("ADA", "Cardano", 0.45, 0.02, 4.65),
+        CryptoTrending("SOL", "Solana", 95.0, 8.0, 9.20),
+        CryptoTrending("XRP", "Ripple", 0.55, -0.02, -3.51),
+        CryptoTrending("DOT", "Polkadot", 7.2, 0.3, 4.35),
+        CryptoTrending("DOGE", "Dogecoin", 0.08, 0.005, 6.67),
+        CryptoTrending("AVAX", "Avalanche", 35.0, 2.5, 7.69),
+        CryptoTrending("MATIC", "Polygon", 0.85, 0.05, 6.25)
     ) }
-    val gainers = trending.filter { it.change > 0 }
-    val losers = trending.filter { it.change < 0 }
+
+    val topGainersList = remember { listOf(
+        CryptoTrending("SOL", "Solana", 95.0, 8.0, 9.20),
+        CryptoTrending("DOGE", "Dogecoin", 0.08, 0.005, 6.67),
+        CryptoTrending("AVAX", "Avalanche", 35.0, 2.5, 7.69),
+        CryptoTrending("MATIC", "Polygon", 0.85, 0.05, 6.25),
+        CryptoTrending("ADA", "Cardano", 0.45, 0.02, 4.65)
+    ) }
+
+    val topLosersList = remember { listOf(
+        CryptoTrending("XRP", "Ripple", 0.55, -0.02, -3.51),
+        CryptoTrending("ETH", "Ethereum", 2800.0, -50.0, -1.75),
+        CryptoTrending("BTC", "Bitcoin", 45000.0, 500.0, 1.1),
+        CryptoTrending("BNB", "Binance Coin", 320.0, 15.0, 4.92),
+        CryptoTrending("DOT", "Polkadot", 7.2, 0.3, 4.35)
+    ) }
+
+    // Load mock data
+    LaunchedEffect(Unit) {
+        trending = trendingCryptos
+        topGainers = topGainersList
+        topLosers = topLosersList
+        loading = false
+    }
+
+    // Start real-time price updates
+    LaunchedEffect(Unit) {
+        portfolioViewModel.loadPortfolio(context)
+        portfolioViewModel.startRealTimeUpdates(context)
+    }
+    
+    // Stop real-time updates when the screen is destroyed
+    DisposableEffect(Unit) {
+        onDispose {
+            portfolioViewModel.stopRealTimeUpdates()
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0E21))) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -168,8 +225,8 @@ fun CryptoScreen() {
             Box(modifier = Modifier.fillMaxSize()) {
                 when (selectedTab) {
                     0 -> CryptoTrendingList(trending)
-                    1 -> CryptoTrendingList(gainers)
-                    2 -> CryptoTrendingList(losers)
+                    1 -> CryptoTrendingList(topGainers)
+                    2 -> CryptoTrendingList(topLosers)
                 }
                 FloatingActionButton(
                     onClick = { showAddDialog = true },
@@ -182,16 +239,15 @@ fun CryptoScreen() {
             }
         }
         if (showAddDialog) {
-            AddCryptoDialog(
-                onAdd = { symbol, qty ->
-                    val crypto = trending.find { it.symbol.equals(symbol, ignoreCase = true) }
-                    if (crypto != null) {
-                        portfolio = portfolio + crypto.copy()
-                    }
-                    showAddDialog = false
-                },
-                onDismiss = { showAddDialog = false }
-            )
+            AddCryptoDialog(trending, onAdd = { symbol, qty ->
+                val crypto = trending.find { it.symbol.equals(symbol, ignoreCase = true) }
+                if (crypto != null) {
+                    portfolioViewModel.addAsset(AssetType.Crypto, crypto.symbol, qty.toDouble(), context)
+                } else {
+                    Toast.makeText(context, "Crypto not found", Toast.LENGTH_SHORT).show()
+                }
+                showAddDialog = false
+            }, onDismiss = { showAddDialog = false })
         }
     }
 }
@@ -277,28 +333,52 @@ fun CryptoTrendingList(stocks: List<CryptoTrending>) {
 }
 
 @Composable
-fun AddCryptoDialog(onAdd: (String, Int) -> Unit, onDismiss: () -> Unit) {
-    var symbol by remember { mutableStateOf("") }
+fun AddCryptoDialog(trending: List<CryptoTrending>, onAdd: (String, Double) -> Unit, onDismiss: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    var selectedSymbol by remember { mutableStateOf(trending.firstOrNull()?.symbol ?: "") }
     var quantity by remember { mutableStateOf("") }
+    val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Crypto", color = Color.White) },
         text = {
             Column {
-                OutlinedTextField(
-                    value = symbol,
-                    onValueChange = { symbol = it },
-                    label = { Text("Symbol") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFFF59E0B),
-                        unfocusedBorderColor = Color(0xFF374151),
-                        cursorColor = Color(0xFFF59E0B),
-                        focusedLabelColor = Color(0xFFF59E0B),
-                        unfocusedLabelColor = Color(0xFF9CA3AF),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedSymbol,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Symbol") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFFF59E0B),
+                            unfocusedBorderColor = Color(0xFF374151),
+                            cursorColor = Color(0xFFF59E0B),
+                            focusedLabelColor = Color(0xFFF59E0B),
+                            unfocusedLabelColor = Color(0xFF9CA3AF),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
                     )
-                )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        trending.forEach { crypto ->
+                            DropdownMenuItem(
+                                text = { Text(crypto.symbol) },
+                                onClick = {
+                                    selectedSymbol = crypto.symbol
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
                     value = quantity,
@@ -319,8 +399,12 @@ fun AddCryptoDialog(onAdd: (String, Int) -> Unit, onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(
                 onClick = {
-                    val qty = quantity.toIntOrNull() ?: 1
-                    if (symbol.isNotBlank()) onAdd(symbol, qty)
+                    val qty = quantity.toDoubleOrNull() ?: 1.0
+                    if (selectedSymbol.isNotBlank()) onAdd(selectedSymbol, qty)
+                    else {
+                        // Show error
+                        Toast.makeText(context, "Please select a symbol", Toast.LENGTH_SHORT).show()
+                    }
                 }
             ) { Text("Add", color = Color(0xFFF59E0B)) }
         },

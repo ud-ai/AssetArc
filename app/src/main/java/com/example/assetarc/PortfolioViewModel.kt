@@ -18,6 +18,9 @@ import com.example.assetarc.ErrorHandler
 import com.example.assetarc.AppError
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import java.util.Calendar
 
 data class PortfolioItem(
     val type: AssetType,
@@ -44,6 +47,17 @@ data class PortfolioSummary(
 )
 
 class PortfolioViewModel : ViewModel() {
+    companion object {
+        @Volatile
+        private var INSTANCE: PortfolioViewModel? = null
+        
+        fun getInstance(): PortfolioViewModel {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: PortfolioViewModel().also { INSTANCE = it }
+            }
+        }
+    }
+
     private val _portfolio = MutableStateFlow<List<PortfolioItem>>(emptyList())
     val portfolio: StateFlow<List<PortfolioItem>> = _portfolio.asStateFlow()
 
@@ -55,6 +69,11 @@ class PortfolioViewModel : ViewModel() {
 
     private val stockService = IndianStockService()
     private val gson = Gson()
+
+    private val _isRealTimeUpdatesEnabled = MutableStateFlow(false)
+    val isRealTimeUpdatesEnabled: StateFlow<Boolean> = _isRealTimeUpdatesEnabled.asStateFlow()
+
+    private var priceUpdateJob: Job? = null
 
     // Load portfolio from SharedPreferences on initialization
     fun loadPortfolio(context: Context) {
@@ -80,29 +99,41 @@ class PortfolioViewModel : ViewModel() {
     }
 
     fun addAsset(type: AssetType, symbol: String, quantity: Double, context: Context) {
+        Log.d("PortfolioViewModel", "Starting addAsset: type=$type, symbol=$symbol, quantity=$quantity")
+        Log.d("PortfolioViewModel", "Current portfolio size before adding: ${_portfolio.value.size}")
         viewModelScope.launch {
             try {
                 _loading.value = true
                 _error.value = null
 
+                Log.d("PortfolioViewModel", "Fetching price for $symbol...")
                 val price = when (type) {
                     is AssetType.IndianStock -> {
                         val stockData = stockService.getStockPrice(symbol, context)
+                        Log.d("PortfolioViewModel", "Indian stock data: $stockData")
                         stockData?.price ?: throw AppError.DataError("Failed to fetch price for $symbol")
                     }
                     is AssetType.Crypto -> {
-                        fetchCoinGeckoPrice(symbol) ?: throw AppError.DataError("Failed to fetch price for $symbol")
+                        val cryptoPrice = fetchCoinGeckoPrice(symbol)
+                        Log.d("PortfolioViewModel", "Crypto price for $symbol: $cryptoPrice")
+                        cryptoPrice ?: throw AppError.DataError("Failed to fetch price for $symbol")
                     }
                     is AssetType.Stock -> {
-                        fetchUSStockPrice(symbol) ?: throw AppError.DataError("Failed to fetch price for $symbol")
+                        val stockPrice = fetchUSStockPrice(symbol)
+                        Log.d("PortfolioViewModel", "US stock price for $symbol: $stockPrice")
+                        stockPrice ?: throw AppError.DataError("Failed to fetch price for $symbol")
                     }
                 }
+
+                Log.d("PortfolioViewModel", "Price fetched: $price")
 
                 val name = when (type) {
                     is AssetType.IndianStock -> stockService.getStockName(symbol)
                     is AssetType.Crypto -> getCryptoName(symbol)
                     is AssetType.Stock -> getUSStockName(symbol)
                 }
+
+                Log.d("PortfolioViewModel", "Name resolved: $name")
 
                 val newItem = PortfolioItem(
                     type = type,
@@ -112,11 +143,17 @@ class PortfolioViewModel : ViewModel() {
                     price = price
                 )
 
+                Log.d("PortfolioViewModel", "Created new item: $newItem")
+
                 val currentPortfolio = _portfolio.value.toMutableList()
+                Log.d("PortfolioViewModel", "Current portfolio size: ${currentPortfolio.size}")
+                
                 val existingIndex = currentPortfolio.indexOfFirst { it.symbol == symbol && it.type == type }
+                Log.d("PortfolioViewModel", "Existing index: $existingIndex")
                 
                 if (existingIndex >= 0) {
                     // Update existing item
+                    Log.d("PortfolioViewModel", "Updating existing item at index $existingIndex")
                     currentPortfolio[existingIndex] = currentPortfolio[existingIndex].copy(
                         quantity = currentPortfolio[existingIndex].quantity + quantity,
                         price = price,
@@ -124,12 +161,15 @@ class PortfolioViewModel : ViewModel() {
                     )
                 } else {
                     // Add new item
+                    Log.d("PortfolioViewModel", "Adding new item to portfolio")
                     currentPortfolio.add(newItem)
                 }
 
+                Log.d("PortfolioViewModel", "Final portfolio size: ${currentPortfolio.size}")
                 _portfolio.value = currentPortfolio
                 savePortfolio(context) // Save to persistent storage
-                Log.d("PortfolioViewModel", "Added asset: $symbol with price: $price")
+                Log.d("PortfolioViewModel", "Successfully added asset: $symbol with price: $price")
+                Log.d("PortfolioViewModel", "Portfolio after save: ${_portfolio.value}")
             } catch (e: Exception) {
                 Log.e("PortfolioViewModel", "Error adding asset: ${e.message}", e)
                 val appError = when (e) {
@@ -255,23 +295,29 @@ class PortfolioViewModel : ViewModel() {
                 )
                 
                 val coinId = coinGeckoIds[symbol.uppercase()] ?: symbol.lowercase()
-                val url = URL("https://api.coingecko.com/api/v3/simple/price?ids=$coinId&vs_currencies=usd")
+                val url = URL("https://api.coingecko.com/api/v3/simple/price?ids=$coinId&vs_currencies=usd&include_24hr_change=true")
                 
                 Log.d("PortfolioViewModel", "Fetching crypto price for $symbol using ID: $coinId")
                 
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
+                connection.setRequestProperty("User-Agent", "AssetArc/1.0")
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
 
                 if (connection.responseCode == 200) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
                     Log.d("PortfolioViewModel", "CoinGecko response: ${response.take(200)}...")
                     
                     val json = JSONObject(response)
-                    val price = json.getJSONObject(coinId).getDouble("usd")
-                    Log.d("PortfolioViewModel", "Fetched crypto price for $symbol: $price")
-                    price
+                    if (json.has(coinId)) {
+                        val price = json.getJSONObject(coinId).getDouble("usd")
+                        Log.d("PortfolioViewModel", "Fetched crypto price for $symbol: $price")
+                        price
+                    } else {
+                        Log.w("PortfolioViewModel", "CoinGecko response doesn't contain $coinId")
+                        null
+                    }
                 } else {
                     Log.w("PortfolioViewModel", "CoinGecko API failed with response code: ${connection.responseCode}")
                     null
@@ -287,12 +333,12 @@ class PortfolioViewModel : ViewModel() {
         return withContext(Dispatchers.IO) {
             try {
                 // Using Yahoo Finance API for US stocks
-                val url = URL("https://query1.finance.yahoo.com/v8/finance/chart/$symbol?interval=1d&range=1d")
+                val url = URL("https://query1.finance.yahoo.com/v8/finance/chart/$symbol?interval=1m&range=1d")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
 
                 if (connection.responseCode == 200) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
@@ -364,5 +410,68 @@ class PortfolioViewModel : ViewModel() {
             "PYPL" to "PayPal Holdings Inc."
         )
         return stockNames[symbol.uppercase()] ?: "$symbol"
+    }
+
+    fun startRealTimeUpdates(context: Context) {
+        if (_isRealTimeUpdatesEnabled.value) return
+        
+        _isRealTimeUpdatesEnabled.value = true
+        priceUpdateJob = viewModelScope.launch {
+            while (_isRealTimeUpdatesEnabled.value) {
+                try {
+                    if (isMarketOpen()) {
+                        Log.d("PortfolioViewModel", "Updating real-time prices...")
+                        updatePrices(context)
+                    } else {
+                        Log.d("PortfolioViewModel", "Market is closed, skipping price update")
+                    }
+                } catch (e: Exception) {
+                    Log.e("PortfolioViewModel", "Error in real-time price update", e)
+                }
+                
+                // Wait 5 seconds before next update
+                delay(5000)
+            }
+        }
+        Log.d("PortfolioViewModel", "Started real-time price updates")
+    }
+
+    fun stopRealTimeUpdates() {
+        _isRealTimeUpdatesEnabled.value = false
+        priceUpdateJob?.cancel()
+        priceUpdateJob = null
+        Log.d("PortfolioViewModel", "Stopped real-time price updates")
+    }
+
+    private fun isMarketOpen(): Boolean {
+        val calendar = Calendar.getInstance()
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        val hour = calendar.get(Calendar.HOUR_OF_DAY)
+        val minute = calendar.get(Calendar.MINUTE)
+        val currentTime = hour * 60 + minute
+
+        // Check if it's a weekday (Monday = 2, Sunday = 1)
+        if (dayOfWeek == Calendar.SUNDAY || dayOfWeek == Calendar.SATURDAY) {
+            return false
+        }
+
+        // Indian Market Hours: 9:15 AM to 3:30 PM IST (3:45 AM to 10:00 AM UTC)
+        val indianMarketOpen = 3 * 60 + 45  // 3:45 AM UTC
+        val indianMarketClose = 10 * 60      // 10:00 AM UTC
+
+        // US Market Hours: 9:30 AM to 4:00 PM EST (2:30 PM to 9:00 PM UTC)
+        val usMarketOpen = 14 * 60 + 30      // 2:30 PM UTC
+        val usMarketClose = 21 * 60          // 9:00 PM UTC
+
+        // Crypto markets are always open
+        val isCryptoMarketOpen = true
+
+        // Check if any market is open
+        val isIndianMarketOpen = currentTime >= indianMarketOpen && currentTime <= indianMarketClose
+        val isUSMarketOpen = currentTime >= usMarketOpen && currentTime <= usMarketClose
+
+        Log.d("PortfolioViewModel", "Market status - Indian: $isIndianMarketOpen, US: $isUSMarketOpen, Crypto: $isCryptoMarketOpen")
+        
+        return isIndianMarketOpen || isUSMarketOpen || isCryptoMarketOpen
     }
 } 

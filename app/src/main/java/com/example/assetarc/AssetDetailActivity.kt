@@ -60,7 +60,7 @@ fun AssetDetailScreen() {
     var showRemoveDialog by remember { mutableStateOf(false) }
     
     val context = LocalContext.current
-    val viewModel: PortfolioViewModel = viewModel()
+    val viewModel = remember { PortfolioViewModel.getInstance() }
     val portfolio by viewModel.portfolio.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()

@@ -1,8 +1,11 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.example.assetarc
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,12 +34,18 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.DisposableHandle
+import android.widget.Toast
 
 // Mock data classes
 
 data class USTrendingStock(val symbol: String, val name: String, val price: Double, val change: Double, val changePercent: Double)
 
 class USStocksActivity : ComponentActivity() {
+    private val portfolioViewModel: PortfolioViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -47,44 +56,76 @@ class USStocksActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun USStocksScreen() {
     var selectedTab by remember { mutableStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
-    var searchResults by remember { mutableStateOf<List<USTrendingStock>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
+    var searchResults by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var trending by remember { mutableStateOf<List<USTrendingStock>>(emptyList()) }
+    var topGainers by remember { mutableStateOf<List<USTrendingStock>>(emptyList()) }
+    var topLosers by remember { mutableStateOf<List<USTrendingStock>>(emptyList()) }
     var showAddDialog by remember { mutableStateOf(false) }
-    var portfolio by remember { mutableStateOf(listOf<USTrendingStock>()) }
-
+    
     val context = LocalContext.current
-    val trending = remember { listOf(
+    val portfolioViewModel = remember { PortfolioViewModel.getInstance() }
+    val portfolio by portfolioViewModel.portfolio.collectAsState()
+    val loadingPortfolio by portfolioViewModel.loading.collectAsState()
+    val error by portfolioViewModel.error.collectAsState()
+
+    // Start real-time price updates
+    LaunchedEffect(Unit) {
+        portfolioViewModel.loadPortfolio(context)
+        portfolioViewModel.startRealTimeUpdates(context)
+    }
+    
+    // Stop real-time updates when the screen is destroyed
+    DisposableEffect(Unit) {
+        onDispose {
+            portfolioViewModel.stopRealTimeUpdates()
+        }
+    }
+
+    val trendingStocks = remember { listOf(
         USTrendingStock("AAPL", "Apple Inc.", 180.0, 2.5, 1.4),
-        USTrendingStock("GOOGL", "Alphabet Inc.", 140.0, -1.2, -0.8),
-        USTrendingStock("MSFT", "Microsoft Corp.", 350.0, 5.0, 1.5),
-        USTrendingStock("AMZN", "Amazon.com Inc.", 150.0, 3.2, 2.1),
-        USTrendingStock("TSLA", "Tesla Inc.", 250.0, -4.0, -1.6)
+        USTrendingStock("GOOGL", "Alphabet Inc.", 140.0, -1.2, -0.85),
+        USTrendingStock("MSFT", "Microsoft Corp.", 350.0, 5.8, 1.68),
+        USTrendingStock("AMZN", "Amazon.com Inc.", 130.0, 3.2, 2.52),
+        USTrendingStock("TSLA", "Tesla Inc.", 240.0, -8.5, -3.42),
+        USTrendingStock("META", "Meta Platforms Inc.", 320.0, 12.5, 4.06),
+        USTrendingStock("NFLX", "Netflix Inc.", 450.0, 15.2, 3.49),
+        USTrendingStock("NVDA", "NVIDIA Corp.", 480.0, 25.8, 5.68),
+        USTrendingStock("AMD", "Advanced Micro Devices Inc.", 120.0, 4.2, 3.62),
+        USTrendingStock("INTC", "Intel Corp.", 45.0, -1.8, -3.85)
     ) }
-    val gainers = trending.filter { it.change > 0 }
-    val losers = trending.filter { it.change < 0 }
+
+    val topGainersList = remember { listOf(
+        USTrendingStock("NVDA", "NVIDIA Corp.", 480.0, 25.8, 5.68),
+        USTrendingStock("META", "Meta Platforms Inc.", 320.0, 12.5, 4.06),
+        USTrendingStock("NFLX", "Netflix Inc.", 450.0, 15.2, 3.49),
+        USTrendingStock("AMD", "Advanced Micro Devices Inc.", 120.0, 4.2, 3.62),
+        USTrendingStock("MSFT", "Microsoft Corp.", 350.0, 5.8, 1.68)
+    ) }
+
+    val topLosersList = remember { listOf(
+        USTrendingStock("TSLA", "Tesla Inc.", 240.0, -8.5, -3.42),
+        USTrendingStock("INTC", "Intel Corp.", 45.0, -1.8, -3.85),
+        USTrendingStock("GOOGL", "Alphabet Inc.", 140.0, -1.2, -0.85),
+        USTrendingStock("AAPL", "Apple Inc.", 180.0, 2.5, 1.4),
+        USTrendingStock("AMZN", "Amazon.com Inc.", 130.0, 3.2, 2.52)
+    ) }
+
+    // Load mock data
+    LaunchedEffect(Unit) {
+        trending = trendingStocks
+        topGainers = topGainersList
+        topLosers = topLosersList
+        loading = false
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0E21))) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Portfolio preview
-            if (portfolio.isNotEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Your US Stocks Portfolio", color = Color.White, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        portfolio.forEach { stock ->
-                            Text("${stock.symbol} - Qty: 1 @ $${stock.price}", color = Color.White, fontSize = 14.sp)
-                        }
-                    }
-                }
-            }
             // Header
             Box(
                 modifier = Modifier
@@ -132,6 +173,62 @@ fun USStocksScreen() {
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    // Portfolio Preview
+                    val usStocksInPortfolio = portfolio.filter { it.type is AssetType.Stock }
+                    if (usStocksInPortfolio.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    "Your US Stocks",
+                                    color = Color.White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                usStocksInPortfolio.take(3).forEach { item ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            item.symbol,
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            "$${String.format("%.2f", item.price)}",
+                                            color = Color.White,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                    if (item != usStocksInPortfolio.take(3).last()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                    }
+                                }
+                                
+                                if (usStocksInPortfolio.size > 3) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        "+${usStocksInPortfolio.size - 3} more",
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                    
+                    // Market overview card
                 }
             }
             // Tabs
@@ -168,8 +265,8 @@ fun USStocksScreen() {
             Box(modifier = Modifier.fillMaxSize()) {
                 when (selectedTab) {
                     0 -> TrendingStocksList(trending)
-                    1 -> TrendingStocksList(gainers)
-                    2 -> TrendingStocksList(losers)
+                    1 -> TrendingStocksList(topGainers)
+                    2 -> TrendingStocksList(topLosers)
                 }
                 FloatingActionButton(
                     onClick = { showAddDialog = true },
@@ -182,16 +279,13 @@ fun USStocksScreen() {
             }
         }
         if (showAddDialog) {
-            AddUSStockDialog(
-                onAdd = { symbol, qty ->
-                    val stock = trending.find { it.symbol.equals(symbol, ignoreCase = true) }
-                    if (stock != null) {
-                        portfolio = portfolio + stock.copy()
-                    }
-                    showAddDialog = false
-                },
-                onDismiss = { showAddDialog = false }
-            )
+            AddUSStockDialog(trending, onAdd = { symbol, qty ->
+                val stock = trending.find { it.symbol.equals(symbol, ignoreCase = true) }
+                if (stock != null) {
+                    portfolioViewModel.addAsset(AssetType.Stock, stock.symbol, qty, context)
+                }
+                showAddDialog = false
+            }, onDismiss = { showAddDialog = false })
         }
     }
 }
@@ -277,28 +371,52 @@ fun TrendingStocksList(stocks: List<USTrendingStock>) {
 }
 
 @Composable
-fun AddUSStockDialog(onAdd: (String, Int) -> Unit, onDismiss: () -> Unit) {
-    var symbol by remember { mutableStateOf("") }
+fun AddUSStockDialog(trending: List<USTrendingStock>, onAdd: (String, Double) -> Unit, onDismiss: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    var selectedSymbol by remember { mutableStateOf(trending.firstOrNull()?.symbol ?: "") }
     var quantity by remember { mutableStateOf("") }
+    val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add US Stock", color = Color.White) },
         text = {
             Column {
-                OutlinedTextField(
-                    value = symbol,
-                    onValueChange = { symbol = it },
-                    label = { Text("Symbol") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF374151),
-                        cursorColor = Color(0xFF3B82F6),
-                        focusedLabelColor = Color(0xFF3B82F6),
-                        unfocusedLabelColor = Color(0xFF9CA3AF),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedSymbol,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Symbol") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF3B82F6),
+                            unfocusedBorderColor = Color(0xFF374151),
+                            cursorColor = Color(0xFF3B82F6),
+                            focusedLabelColor = Color(0xFF3B82F6),
+                            unfocusedLabelColor = Color(0xFF9CA3AF),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
                     )
-                )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        trending.forEach { stock ->
+                            DropdownMenuItem(
+                                text = { Text(stock.symbol) },
+                                onClick = {
+                                    selectedSymbol = stock.symbol
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
                     value = quantity,
@@ -319,8 +437,12 @@ fun AddUSStockDialog(onAdd: (String, Int) -> Unit, onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(
                 onClick = {
-                    val qty = quantity.toIntOrNull() ?: 1
-                    if (symbol.isNotBlank()) onAdd(symbol, qty)
+                    val qty = quantity.toDoubleOrNull() ?: 1.0
+                    if (selectedSymbol.isNotBlank()) onAdd(selectedSymbol, qty)
+                    else {
+                        // Show error
+                        Toast.makeText(context, "Please select a symbol", Toast.LENGTH_SHORT).show()
+                    }
                 }
             ) { Text("Add", color = Color(0xFF3B82F6)) }
         },
