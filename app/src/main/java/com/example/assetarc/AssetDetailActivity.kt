@@ -34,6 +34,12 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.DrawStyle
+import androidx.compose.foundation.Canvas
 
 class AssetDetailActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -389,7 +395,7 @@ fun AssetDetailScreen() {
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            viewModel.removeAsset(asset.symbol, asset.type)
+                            viewModel.removeAsset(asset.symbol, asset.type, context)
                             showRemoveDialog = false
                         }
                     ) { Text("Remove", color = Color(0xFFEF4444)) }
@@ -474,43 +480,176 @@ fun OverviewContent(asset: PortfolioItem) {
 
 @Composable
 fun ChartContent(asset: PortfolioItem) {
-    Box(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        contentAlignment = Alignment.Center
+    val context = LocalContext.current
+    var chartData by remember { mutableStateOf<List<ChartPoint>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    
+    // Generate mock chart data
+    LaunchedEffect(asset.symbol) {
+        loading = true
+        // Generate 30 days of mock data
+        val mockData = (0..30).map { day ->
+            val basePrice = asset.price
+            val randomChange = (Math.random() - 0.5) * 0.1 // ±5% change
+            val price = basePrice * (1 + randomChange)
+            ChartPoint(day.toFloat(), price.toFloat())
+        }
+        chartData = mockData
+        loading = false
+    }
+    
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp)
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
-        ) {
-            Column(
-                modifier = Modifier.padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+        Text(
+            "Price Chart (30 Days)",
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        
+        if (loading) {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(200.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.ShowChart,
-                    contentDescription = "Chart",
-                    tint = Color(0xFF6B7280),
-                    modifier = Modifier.size(64.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "Price Chart",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "Interactive charts coming soon",
-                    color = Color(0xFF9CA3AF),
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center
-                )
+                CircularProgressIndicator(color = Color(0xFF3B82F6))
+            }
+        } else {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    // Simple line chart using Canvas
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .padding(16.dp)
+                    ) {
+                        if (chartData.isNotEmpty()) {
+                            val width = size.width
+                            val height = size.height
+                            val minPrice = chartData.minOf { it.price }
+                            val maxPrice = chartData.maxOf { it.price }
+                            val priceRange = maxPrice - minPrice
+                            
+                            // Draw grid lines
+                            val gridColor = Color(0xFF374151)
+                            
+                            // Horizontal grid lines
+                            for (i in 0..4) {
+                                val y = height * i / 4
+                                drawLine(
+                                    color = gridColor,
+                                    start = Offset(0f, y),
+                                    end = Offset(width, y),
+                                    strokeWidth = 1f
+                                )
+                            }
+                            
+                            // Vertical grid lines
+                            for (i in 0..6) {
+                                val x = width * i / 6
+                                drawLine(
+                                    color = gridColor,
+                                    start = Offset(x, 0f),
+                                    end = Offset(x, height),
+                                    strokeWidth = 1f
+                                )
+                            }
+                            
+                            // Draw price line
+                            val lineColor = if (asset.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444)
+                            
+                            val path = Path()
+                            var isFirst = true
+                            
+                            chartData.forEachIndexed { index, point ->
+                                val x = width * index.toFloat() / chartData.size.toFloat()
+                                val y = height - (height * ((point.price - minPrice) / priceRange).toFloat())
+                                
+                                if (isFirst) {
+                                    path.moveTo(x, y)
+                                    isFirst = false
+                                } else {
+                                    path.lineTo(x, y)
+                                }
+                            }
+                            
+                            drawPath(
+                                path = path,
+                                color = lineColor,
+                                style = Stroke(width = 3f)
+                            )
+                            
+                            // Draw area under the line
+                            val areaColor = if (asset.changePercent >= 0) 
+                                Color(0xFF10B981).copy(alpha = 0.2f) 
+                            else 
+                                Color(0xFFEF4444).copy(alpha = 0.2f)
+                            
+                            val areaPath = Path()
+                            areaPath.addPath(path)
+                            areaPath.lineTo(width, height)
+                            areaPath.lineTo(0f, height)
+                            areaPath.close()
+                            drawPath(path = areaPath, color = areaColor)
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Chart statistics
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                "Current Price",
+                                color = Color(0xFF9CA3AF),
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                when (asset.type) {
+                                    is AssetType.IndianStock -> "₹${String.format("%.2f", asset.price)}"
+                                    is AssetType.Stock -> "$${String.format("%.2f", asset.price)}"
+                                    is AssetType.Crypto -> "$${String.format("%.2f", asset.price)}"
+                                },
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                "Change",
+                                color = Color(0xFF9CA3AF),
+                                fontSize = 12.sp
+                            )
+                            Text(
+                                "${String.format("%.2f", asset.changePercent)}%",
+                                color = if (asset.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+data class ChartPoint(
+    val day: Float,
+    val price: Float
+)
 
 @Composable
 fun NewsContent(asset: PortfolioItem) {

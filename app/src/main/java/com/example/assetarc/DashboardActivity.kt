@@ -16,18 +16,27 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.DrawStyle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.assetarc.ui.theme.AssetArcTheme
+import androidx.compose.foundation.Canvas
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +65,7 @@ fun DashboardScreen() {
     
     // Update prices periodically
     LaunchedEffect(Unit) {
+        viewModel.loadPortfolio(context) // Load portfolio from persistent storage
         viewModel.updatePrices(context)
     }
 
@@ -401,6 +411,11 @@ fun OverviewTab(viewModel: PortfolioViewModel) {
                     }
                 }
             }
+        }
+        
+        item {
+            // Portfolio Chart
+            PortfolioChart(viewModel.portfolio.value)
         }
     }
 }
@@ -934,6 +949,169 @@ fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
                 color = if (result.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
                 fontSize = 14.sp
             )
+        }
+    }
+}
+
+@Composable
+fun PortfolioChart(portfolio: List<PortfolioItem>) {
+    if (portfolio.isEmpty()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.ShowChart,
+                        contentDescription = "Chart",
+                        tint = Color(0xFF6B7280),
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Add assets to see portfolio chart",
+                        color = Color(0xFF9CA3AF),
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+    } else {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    "Portfolio Performance",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                
+                // Simple portfolio chart
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .padding(16.dp)
+                ) {
+                    val width = size.width
+                    val height = size.height
+                    
+                    // Calculate portfolio values over time (mock data)
+                    val portfolioValues = (0..7).map { day ->
+                        val baseValue = portfolio.sumOf { it.quantity * it.price }
+                        val randomChange = (Math.random() - 0.5) * 0.05 // ±2.5% change
+                        baseValue * (1 + randomChange)
+                    }
+                    
+                    val minValue = portfolioValues.minOrNull() ?: 0.0
+                    val maxValue = portfolioValues.maxOrNull() ?: 0.0
+                    val valueRange = maxValue - minValue
+                    
+                    if (valueRange > 0) {
+                        // Draw grid lines
+                        val gridColor = Color(0xFF374151)
+                        
+                        // Horizontal grid lines
+                        for (i in 0..3) {
+                            val y = height * i / 3
+                            drawLine(
+                                color = gridColor,
+                                start = Offset(0f, y),
+                                end = Offset(width, y),
+                                strokeWidth = 1f
+                            )
+                        }
+                        
+                        // Draw portfolio line
+                        val lineColor = Color(0xFF3B82F6)
+                        
+                        val path = Path()
+                        var isFirst = true
+                        
+                        portfolioValues.forEachIndexed { index, value ->
+                            val x = width * index.toFloat() / (portfolioValues.size - 1).toFloat()
+                            val y = height - (height * ((value - minValue) / valueRange).toFloat())
+                            
+                            if (isFirst) {
+                                path.moveTo(x, y)
+                                isFirst = false
+                            } else {
+                                path.lineTo(x, y)
+                            }
+                        }
+                        
+                        drawPath(
+                            path = path,
+                            color = lineColor,
+                            style = Stroke(width = 3f)
+                        )
+                        
+                        // Draw area under the line
+                        val areaColor = Color(0xFF3B82F6).copy(alpha = 0.2f)
+                        
+                        val areaPath = Path()
+                        areaPath.addPath(path)
+                        areaPath.lineTo(width, height)
+                        areaPath.lineTo(0f, height)
+                        areaPath.close()
+                        drawPath(path = areaPath, color = areaColor)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Portfolio summary
+                val totalValue = portfolio.sumOf { it.quantity * it.price }
+                val totalChange = portfolio.sumOf { it.quantity * it.change }
+                val totalChangePercent = if (totalValue > 0) (totalChange / totalValue) * 100 else 0.0
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            "Total Value",
+                            color = Color(0xFF9CA3AF),
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            "₹${String.format("%.2f", totalValue)}",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            "Today's Change",
+                            color = Color(0xFF9CA3AF),
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            "${String.format("%.2f", totalChangePercent)}%",
+                            color = if (totalChangePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
     }
 } 

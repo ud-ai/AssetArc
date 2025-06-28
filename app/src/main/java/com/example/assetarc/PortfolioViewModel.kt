@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,6 +16,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import com.example.assetarc.ErrorHandler
 import com.example.assetarc.AppError
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 data class PortfolioItem(
     val type: AssetType,
@@ -51,6 +54,30 @@ class PortfolioViewModel : ViewModel() {
     val error: StateFlow<String?> = _error.asStateFlow()
 
     private val stockService = IndianStockService()
+    private val gson = Gson()
+
+    // Load portfolio from SharedPreferences on initialization
+    fun loadPortfolio(context: Context) {
+        val prefs = context.getSharedPreferences("portfolio_prefs", Context.MODE_PRIVATE)
+        val portfolioJson = prefs.getString("portfolio", "[]")
+        try {
+            val type = object : TypeToken<List<PortfolioItem>>() {}.type
+            val savedPortfolio = gson.fromJson<List<PortfolioItem>>(portfolioJson, type) ?: emptyList()
+            _portfolio.value = savedPortfolio
+            Log.d("PortfolioViewModel", "Loaded portfolio with ${savedPortfolio.size} items")
+        } catch (e: Exception) {
+            Log.e("PortfolioViewModel", "Error loading portfolio", e)
+            _portfolio.value = emptyList()
+        }
+    }
+
+    // Save portfolio to SharedPreferences
+    private fun savePortfolio(context: Context) {
+        val prefs = context.getSharedPreferences("portfolio_prefs", Context.MODE_PRIVATE)
+        val portfolioJson = gson.toJson(_portfolio.value)
+        prefs.edit().putString("portfolio", portfolioJson).apply()
+        Log.d("PortfolioViewModel", "Saved portfolio with ${_portfolio.value.size} items")
+    }
 
     fun addAsset(type: AssetType, symbol: String, quantity: Double, context: Context) {
         viewModelScope.launch {
@@ -79,7 +106,7 @@ class PortfolioViewModel : ViewModel() {
 
                 val newItem = PortfolioItem(
                     type = type,
-                    symbol = symbol.uppercase(),
+                    symbol = symbol,
                     name = name,
                     quantity = quantity,
                     price = price
@@ -101,6 +128,7 @@ class PortfolioViewModel : ViewModel() {
                 }
 
                 _portfolio.value = currentPortfolio
+                savePortfolio(context) // Save to persistent storage
                 Log.d("PortfolioViewModel", "Added asset: $symbol with price: $price")
             } catch (e: Exception) {
                 Log.e("PortfolioViewModel", "Error adding asset: ${e.message}", e)
@@ -116,10 +144,11 @@ class PortfolioViewModel : ViewModel() {
         }
     }
 
-    fun removeAsset(symbol: String, type: AssetType) {
+    fun removeAsset(symbol: String, type: AssetType, context: Context) {
         val currentPortfolio = _portfolio.value.toMutableList()
         currentPortfolio.removeAll { it.symbol == symbol && it.type == type }
         _portfolio.value = currentPortfolio
+        savePortfolio(context) // Save to persistent storage
     }
 
     fun updatePrices(context: Context) {
@@ -160,6 +189,7 @@ class PortfolioViewModel : ViewModel() {
                 }
 
                 _portfolio.value = updatedPortfolio
+                savePortfolio(context) // Save updated prices
                 Log.d("PortfolioViewModel", "Updated prices for ${updatedPortfolio.size} assets")
             } catch (e: Exception) {
                 Log.e("PortfolioViewModel", "Error updating prices: ${e.message}", e)
@@ -200,7 +230,35 @@ class PortfolioViewModel : ViewModel() {
     private suspend fun fetchCoinGeckoPrice(symbol: String): Double? {
         return withContext(Dispatchers.IO) {
             try {
-                val url = URL("https://api.coingecko.com/api/v3/simple/price?ids=${symbol.lowercase()}&vs_currencies=usd")
+                // Map symbols to CoinGecko IDs
+                val coinGeckoIds = mapOf(
+                    "BTC" to "bitcoin",
+                    "ETH" to "ethereum",
+                    "BNB" to "binancecoin",
+                    "ADA" to "cardano",
+                    "SOL" to "solana",
+                    "XRP" to "ripple",
+                    "DOT" to "polkadot",
+                    "DOGE" to "dogecoin",
+                    "AVAX" to "avalanche-2",
+                    "MATIC" to "matic-network",
+                    "LINK" to "chainlink",
+                    "UNI" to "uniswap",
+                    "LTC" to "litecoin",
+                    "BCH" to "bitcoin-cash",
+                    "XLM" to "stellar",
+                    "ATOM" to "cosmos",
+                    "FTT" to "ftx-token",
+                    "NEAR" to "near",
+                    "ALGO" to "algorand",
+                    "VET" to "vechain"
+                )
+                
+                val coinId = coinGeckoIds[symbol.uppercase()] ?: symbol.lowercase()
+                val url = URL("https://api.coingecko.com/api/v3/simple/price?ids=$coinId&vs_currencies=usd")
+                
+                Log.d("PortfolioViewModel", "Fetching crypto price for $symbol using ID: $coinId")
+                
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 10000
@@ -208,8 +266,10 @@ class PortfolioViewModel : ViewModel() {
 
                 if (connection.responseCode == 200) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    Log.d("PortfolioViewModel", "CoinGecko response: ${response.take(200)}...")
+                    
                     val json = JSONObject(response)
-                    val price = json.getJSONObject(symbol.lowercase()).getDouble("usd")
+                    val price = json.getJSONObject(coinId).getDouble("usd")
                     Log.d("PortfolioViewModel", "Fetched crypto price for $symbol: $price")
                     price
                 } else {
@@ -261,11 +321,21 @@ class PortfolioViewModel : ViewModel() {
             "BNB" to "Binance Coin",
             "ADA" to "Cardano",
             "SOL" to "Solana",
+            "XRP" to "Ripple",
             "DOT" to "Polkadot",
             "DOGE" to "Dogecoin",
             "AVAX" to "Avalanche",
             "MATIC" to "Polygon",
-            "LINK" to "Chainlink"
+            "LINK" to "Chainlink",
+            "UNI" to "Uniswap",
+            "LTC" to "Litecoin",
+            "BCH" to "Bitcoin Cash",
+            "XLM" to "Stellar",
+            "ATOM" to "Cosmos",
+            "FTT" to "FTX Token",
+            "NEAR" to "NEAR Protocol",
+            "ALGO" to "Algorand",
+            "VET" to "VeChain"
         )
         return cryptoNames[symbol.uppercase()] ?: "$symbol"
     }
@@ -281,7 +351,17 @@ class PortfolioViewModel : ViewModel() {
             "NFLX" to "Netflix Inc.",
             "NVDA" to "NVIDIA Corp.",
             "AMD" to "Advanced Micro Devices Inc.",
-            "INTC" to "Intel Corp."
+            "INTC" to "Intel Corp.",
+            "ORCL" to "Oracle Corp.",
+            "IBM" to "International Business Machines Corp.",
+            "CSCO" to "Cisco Systems Inc.",
+            "QCOM" to "Qualcomm Inc.",
+            "TXN" to "Texas Instruments Inc.",
+            "AVGO" to "Broadcom Inc.",
+            "MU" to "Micron Technology Inc.",
+            "ADBE" to "Adobe Inc.",
+            "CRM" to "Salesforce Inc.",
+            "PYPL" to "PayPal Holdings Inc."
         )
         return stockNames[symbol.uppercase()] ?: "$symbol"
     }
