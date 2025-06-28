@@ -1,17 +1,19 @@
 package com.example.assetarc
 
-import android.content.Context
+import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,19 +21,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.assetarc.ui.theme.AssetArcTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.URL
-import com.example.assetarc.BuildConfig
-import androidx.compose.runtime.rememberCoroutineScope
-
-sealed class AssetType { object Stock : AssetType(); object Crypto : AssetType() }
-data class PortfolioItem(val type: AssetType, val symbol: String, val quantity: Double, val price: Double)
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,215 +38,553 @@ class DashboardActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen() {
-    var portfolio by remember { mutableStateOf(listOf<PortfolioItem>()) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var totalBalance by remember { mutableStateOf(0.0) }
-    var loading by remember { mutableStateOf(false) }
-    var apiKey by remember { mutableStateOf("") }
-    var searchQuery by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableStateOf(0) }
+    val viewModel: PortfolioViewModel = viewModel()
+    val portfolio by viewModel.portfolio.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+    val error by viewModel.error.collectAsState()
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
-    // Prompt for API key if not set
+    
+    // Update prices periodically
     LaunchedEffect(Unit) {
-        if (apiKey.isBlank()) {
-            // In production, use secure storage. For demo, prompt user.
-            apiKey = promptForApiKey(context)
-        }
+        viewModel.updatePrices(context)
     }
 
-    // Update total balance whenever portfolio changes
-    LaunchedEffect(portfolio) {
-        totalBalance = portfolio.sumOf { it.quantity * it.price }
-    }
-
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF17212B))) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0E21))) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Move search bar to the top
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = { Text("Search portfolio...") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0xFF3390EC),
-                    unfocusedBorderColor = Color(0xFF232E3C),
-                    cursorColor = Color(0xFF3390EC),
-                    focusedLabelColor = Color(0xFF3390EC),
-                    unfocusedLabelColor = Color(0xFFAEBACB),
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White
-                )
-            )
-            Divider(color = Color(0xFF232E3C), thickness = 1.dp, modifier = Modifier.padding(bottom = 8.dp))
+            // Header
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF232E3C))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    Text("Total Balance", color = Color.White, fontSize = 18.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("$" + String.format("%.2f", totalBalance), color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            Text(
-                text = "Portfolio",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp,
-                modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 8.dp)
-            )
-            val filteredPortfolio = portfolio.filter {
-                searchQuery.isBlank() ||
-                it.symbol.contains(searchQuery, ignoreCase = true) ||
-                (it.type is AssetType.Stock && "stock".contains(searchQuery, ignoreCase = true)) ||
-                (it.type is AssetType.Crypto && "crypto".contains(searchQuery, ignoreCase = true))
-            }
-            LazyColumn(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
-                if (filteredPortfolio.isEmpty()) {
-                    item {
-                        Text("No assets yet. Add stocks or crypto!", color = Color(0xFFAEBACB), modifier = Modifier.padding(16.dp))
-                    }
-                } else {
-                    items(filteredPortfolio) { item ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF232E3C))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (item.type is AssetType.Stock) "Stock" else "Crypto",
-                                    color = if (item.type is AssetType.Stock) Color(0xFF3390EC) else Color(0xFFF7931A),
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.width(60.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(item.symbol, color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.width(60.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Qty: ${item.quantity}", color = Color.White, modifier = Modifier.width(80.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("$${String.format("%.2f", item.price)}", color = Color.White, fontWeight = FontWeight.Bold)
-                            }
+                    Text(
+                        "AssetArc",
+                        color = Color.White,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Your Investment Dashboard",
+                        color = Color(0xFF9CA3AF),
+                        fontSize = 16.sp
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Portfolio Summary
+                    val summary = viewModel.getPortfolioSummary()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                "Portfolio Value",
+                                color = Color(0xFF9CA3AF),
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                "₹${String.format("%.2f", summary.totalValue)}",
+                                color = Color.White,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                "Today's Change",
+                                color = Color(0xFF9CA3AF),
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                "${String.format("%.2f", summary.totalChangePercent)}%",
+                                color = if (summary.totalChangePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
             }
+
+            // Tab Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                listOf("Overview", "Portfolio", "Watchlist").forEachIndexed { index, title ->
+                    val isSelected = selectedTab == index
+                    Card(
+                        modifier = Modifier
+                            .clickable { selectedTab = index },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected) Color(0xFF3B82F6) else Color(0xFF1F2937)
+                        )
+                    ) {
+                        Text(
+                            text = title,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Content based on selected tab
+            when (selectedTab) {
+                0 -> OverviewTab(viewModel)
+                1 -> PortfolioTab(viewModel)
+                2 -> WatchlistTab(viewModel)
+            }
         }
+        
         if (loading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Color(0xFF3390EC))
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFF3B82F6))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            "Loading...",
+                            color = Color.White,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
             }
         }
-        FloatingActionButton(
-            onClick = { showAddDialog = true },
-            containerColor = Color(0xFF3390EC),
-            contentColor = Color.White,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp)
-        ) {
-            Icon(Icons.Default.Add, contentDescription = "Add Asset")
-        }
-        if (showAddDialog) {
-            AddAssetDialog(
-                onAdd = { type, symbol, qty ->
-                    showAddDialog = false
-                    loading = true
-                    coroutineScope.launch {
-                        fetchFinnhubPrice(symbol, type, apiKey, context) { price ->
-                            loading = false
-                            if (price != null) {
-                                portfolio = portfolio + PortfolioItem(type, symbol.uppercase(), qty, price)
-                            } else {
-                                Toast.makeText(context, "Failed to fetch price for $symbol", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                },
-                onDismiss = { showAddDialog = false }
-            )
+        
+        error?.let { errorMessage ->
+            Snackbar(
+                modifier = Modifier.padding(16.dp),
+                containerColor = Color(0xFFEF4444),
+                contentColor = Color.White
+            ) {
+                Text(errorMessage)
+            }
         }
     }
-}
-
-fun promptForApiKey(context: Context): String {
-    return BuildConfig.FINNHUB_API_KEY
-}
-
-suspend fun fetchFinnhubPrice(symbol: String, type: AssetType, apiKey: String, context: Context, onResult: (Double?) -> Unit) {
-    val querySymbol = if (type is AssetType.Crypto) "BINANCE:${symbol.uppercase()}USDT" else symbol.uppercase()
-    val url = "https://finnhub.io/api/v1/quote?symbol=$querySymbol&token=$apiKey"
-    val price = withContext(Dispatchers.IO) {
-        try {
-            val response = URL(url).readText()
-            val json = JSONObject(response)
-            json.optDouble("c", Double.NaN).takeIf { !it.isNaN() }
-        } catch (e: Exception) {
-            null
-        }
-    }
-    onResult(price)
 }
 
 @Composable
-fun AddAssetDialog(onAdd: (AssetType, String, Double) -> Unit, onDismiss: () -> Unit) {
-    var type by remember { mutableStateOf<AssetType>(AssetType.Stock) }
-    var symbol by remember { mutableStateOf("") }
-    var qty by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add Asset") },
-        text = {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(selected = type is AssetType.Stock, onClick = { type = AssetType.Stock })
-                    Text("Stock", modifier = Modifier.padding(end = 16.dp))
-                    RadioButton(selected = type is AssetType.Crypto, onClick = { type = AssetType.Crypto })
-                    Text("Crypto")
-                }
-                OutlinedTextField(
-                    value = symbol,
-                    onValueChange = { symbol = it },
-                    label = { Text("Symbol (e.g. AAPL, BTC)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                )
-                OutlinedTextField(
-                    value = qty,
-                    onValueChange = { qty = it.filter { c -> c.isDigit() || c == '.' } },
-                    label = { Text("Quantity") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val quantity = qty.toDoubleOrNull() ?: 0.0
-                    if (symbol.isNotBlank() && quantity > 0) {
-                        onAdd(type, symbol, quantity)
-                    }
-                },
-                enabled = symbol.isNotBlank() && qty.isNotBlank() && qty.toDoubleOrNull() != null && qty.toDouble() > 0
+fun OverviewTab(viewModel: PortfolioViewModel) {
+    val context = LocalContext.current
+    
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
+    ) {
+        item {
+            // Market Overview
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
             ) {
-                Text("Add")
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        "Market Overview",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    MarketOverviewItem("NIFTY 50", "₹19,850.25", "+125.50", "+0.64%", true)
+                    MarketOverviewItem("SENSEX", "₹66,150.75", "+425.25", "+0.65%", true)
+                    MarketOverviewItem("BANK NIFTY", "₹44,250.50", "-125.75", "-0.28%", false)
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
+        
+        item {
+            // Top Gainers
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        "Top Gainers",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    getMockTopGainers().forEach { stock ->
+                        StockListItem(
+                            stock = stock,
+                            onClick = {
+                                val intent = Intent(context, AssetDetailActivity::class.java).apply {
+                                    putExtra("symbol", stock.symbol)
+                                    putExtra("name", stock.name)
+                                    putExtra("price", stock.price)
+                                    putExtra("change", stock.change)
+                                    putExtra("changePercent", stock.changePercent)
+                                    putExtra("type", "indian_stock")
+                                }
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        
+        item {
+            // Trending Assets
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        "Trending",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    getMockTrendingAssets().forEach { asset ->
+                        AssetListItem(
+                            asset = asset,
+                            onClick = {
+                                val intent = Intent(context, AssetDetailActivity::class.java).apply {
+                                    putExtra("symbol", asset.symbol)
+                                    putExtra("name", asset.name)
+                                    putExtra("price", asset.price)
+                                    putExtra("change", asset.change)
+                                    putExtra("changePercent", asset.changePercent)
+                                    putExtra("type", when (asset.type) {
+                                        "stock" -> "indian_stock"
+                                        "crypto" -> "crypto"
+                                        else -> "indian_stock"
+                                    })
+                                }
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PortfolioTab(viewModel: PortfolioViewModel) {
+    val portfolio by viewModel.portfolio.collectAsState()
+    val context = LocalContext.current
+    
+    if (portfolio.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    Icons.Default.AccountBalanceWallet,
+                    contentDescription = "Empty Portfolio",
+                    tint = Color(0xFF6B7280),
+                    modifier = Modifier.size(64.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "Your portfolio is empty",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Add assets to start tracking",
+                    color = Color(0xFF9CA3AF),
+                    fontSize = 14.sp
+                )
+            }
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
+        ) {
+            items(portfolio) { item ->
+                PortfolioItemCard(
+                    item = item,
+                    onClick = {
+                        val intent = Intent(context, AssetDetailActivity::class.java).apply {
+                            putExtra("symbol", item.symbol)
+                            putExtra("name", item.name)
+                            putExtra("price", item.price)
+                            putExtra("change", item.change)
+                            putExtra("changePercent", item.changePercent)
+                            putExtra("type", when (item.type) {
+                                is AssetType.IndianStock -> "indian_stock"
+                                is AssetType.Stock -> "us_stock"
+                                is AssetType.Crypto -> "crypto"
+                            })
+                        }
+                        context.startActivity(intent)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun WatchlistTab(viewModel: PortfolioViewModel) {
+    val context = LocalContext.current
+    
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
+    ) {
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        "Watchlist",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    getMockWatchlist().forEach { asset ->
+                        AssetListItem(
+                            asset = asset,
+                            onClick = {
+                                val intent = Intent(context, AssetDetailActivity::class.java).apply {
+                                    putExtra("symbol", asset.symbol)
+                                    putExtra("name", asset.name)
+                                    putExtra("price", asset.price)
+                                    putExtra("change", asset.change)
+                                    putExtra("changePercent", asset.changePercent)
+                                    putExtra("type", when (asset.type) {
+                                        "stock" -> "us_stock"
+                                        "crypto" -> "crypto"
+                                        else -> "us_stock"
+                                    })
+                                }
+                                context.startActivity(intent)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MarketOverviewItem(name: String, price: String, change: String, changePercent: String, isPositive: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        Column(horizontalAlignment = Alignment.End) {
+            Text(price, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "$change ($changePercent)",
+                color = if (isPositive) Color(0xFF10B981) else Color(0xFFEF4444),
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun StockListItem(stock: StockData, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF374151))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(stock.symbol, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(stock.name, color = Color(0xFF9CA3AF), fontSize = 14.sp)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("₹${stock.price}", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "${stock.change} (${stock.changePercent}%)",
+                    color = if (stock.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                    fontSize = 14.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AssetListItem(asset: AssetData, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF374151))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(asset.symbol, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(asset.name, color = Color(0xFF9CA3AF), fontSize = 14.sp)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    when (asset.type) {
+                        "stock" -> "₹${asset.price}"
+                        "crypto" -> "$${asset.price}"
+                        else -> "₹${asset.price}"
+                    },
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "${asset.change} (${asset.changePercent}%)",
+                    color = if (asset.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                    fontSize = 14.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PortfolioItemCard(item: PortfolioItem, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF374151))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(item.symbol, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(item.name, color = Color(0xFF9CA3AF), fontSize = 14.sp)
+                Text("Qty: ${item.quantity}", color = Color(0xFF6B7280), fontSize = 12.sp)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    when (item.type) {
+                        is AssetType.IndianStock -> "₹${String.format("%.2f", item.price)}"
+                        is AssetType.Stock -> "$${String.format("%.2f", item.price)}"
+                        is AssetType.Crypto -> "$${String.format("%.2f", item.price)}"
+                    },
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "${String.format("%.2f", item.changePercent)}%",
+                    color = if (item.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                    fontSize = 14.sp
+                )
+                Text(
+                    "Value: ${when (item.type) {
+                        is AssetType.IndianStock -> "₹${String.format("%.2f", item.quantity * item.price)}"
+                        is AssetType.Stock -> "$${String.format("%.2f", item.quantity * item.price)}"
+                        is AssetType.Crypto -> "$${String.format("%.2f", item.quantity * item.price)}"
+                    }}",
+                    color = Color(0xFF6B7280),
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
+
+data class AssetData(
+    val symbol: String,
+    val name: String,
+    val price: Double,
+    val change: Double,
+    val changePercent: Double,
+    val type: String
+)
+
+fun getMockTopGainers(): List<StockData> {
+    return listOf(
+        StockData("RELIANCE", "Reliance Industries", 2450.75, 45.25, 1.88, 12500000L, 1650000.0, 2480.0, 2400.0, 2405.5, 2405.5),
+        StockData("TCS", "Tata Consultancy", 3850.50, 75.30, 2.00, 8500000L, 1450000.0, 3900.0, 3775.2, 3775.2, 3775.2),
+        StockData("HDFC", "HDFC Bank", 1650.25, 25.75, 1.59, 12000000L, 950000.0, 1675.0, 1624.5, 1624.5, 1624.5),
+        StockData("INFY", "Infosys", 1450.80, 30.20, 2.13, 9800000L, 600000.0, 1475.0, 1420.6, 1420.6, 1420.6),
+        StockData("ICICIBANK", "ICICI Bank", 950.45, 15.55, 1.66, 15000000L, 650000.0, 965.0, 934.9, 934.9, 934.9)
+    )
+}
+
+fun getMockTrendingAssets(): List<AssetData> {
+    return listOf(
+        AssetData("BTC", "Bitcoin", 45000.0, 500.0, 1.12, "crypto"),
+        AssetData("ETH", "Ethereum", 3000.0, -50.0, -1.64, "crypto"),
+        AssetData("AAPL", "Apple Inc.", 180.0, 2.5, 1.41, "stock"),
+        AssetData("GOOGL", "Alphabet Inc.", 140.0, -1.2, -0.85, "stock"),
+        AssetData("RELIANCE", "Reliance Industries", 2450.75, 45.25, 1.88, "stock")
+    )
+}
+
+fun getMockWatchlist(): List<AssetData> {
+    return listOf(
+        AssetData("TSLA", "Tesla Inc.", 250.0, -4.0, -1.57, "stock"),
+        AssetData("MSFT", "Microsoft Corp.", 350.0, 5.0, 1.45, "stock"),
+        AssetData("AMZN", "Amazon.com Inc.", 150.0, 3.2, 2.18, "stock"),
+        AssetData("BNB", "Binance Coin", 400.0, 10.0, 2.56, "crypto"),
+        AssetData("ADA", "Cardano", 0.5, 0.01, 2.04, "crypto")
     )
 } 
