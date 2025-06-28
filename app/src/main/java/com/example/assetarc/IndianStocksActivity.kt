@@ -18,6 +18,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -215,10 +220,21 @@ fun IndianStocksScreen() {
                             contentDescription = "Search",
                             tint = Color(0xFF9CA3AF)
                         )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    Icons.Default.Clear,
+                                    contentDescription = "Clear",
+                                    tint = Color(0xFF9CA3AF)
+                                )
+                            }
+                        }
                     }
                 )
                 
-                // Search results dropdown
+                // Enhanced Search results dropdown
                 if (showSearchResults && searchResults.isNotEmpty()) {
                     Card(
                         modifier = Modifier
@@ -228,24 +244,55 @@ fun IndianStocksScreen() {
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
                     ) {
                         LazyColumn(
-                            modifier = Modifier.heightIn(max = 200.dp)
+                            modifier = Modifier.heightIn(max = 250.dp)
                         ) {
                             items(searchResults) { result ->
-                                Box(
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
                                             searchQuery = result
                                             showSearchResults = false
-                                            // Navigate to stock detail or add to portfolio
+                                            // Navigate to stock detail
+                                            val intent = Intent(context, AssetDetailActivity::class.java).apply {
+                                                putExtra("symbol", result)
+                                                putExtra("name", IndianStockService.INDIAN_STOCKS[result] ?: result)
+                                                putExtra("price", 2450.75) // Mock price
+                                                putExtra("change", 45.25)
+                                                putExtra("changePercent", 1.88)
+                                                putExtra("type", "indian_stock")
+                                            }
+                                            context.startActivity(intent)
                                         }
-                                        .padding(12.dp)
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        result,
-                                        color = Color.White,
-                                        fontSize = 14.sp
-                                    )
+                                    Column {
+                                        Text(
+                                            result,
+                                            color = Color.White,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            IndianStockService.INDIAN_STOCKS[result] ?: "",
+                                            color = Color(0xFF9CA3AF),
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                    Card(
+                                        shape = RoundedCornerShape(4.dp),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981))
+                                    ) {
+                                        Text(
+                                            "IN",
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                                 if (result != searchResults.last()) {
                                     Divider(color = Color(0xFF374151), thickness = 0.5.dp)

@@ -14,6 +14,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,6 +44,10 @@ class DashboardActivity : ComponentActivity() {
 @Composable
 fun DashboardScreen() {
     var selectedTab by remember { mutableStateOf(0) }
+    var searchQuery by remember { mutableStateOf("") }
+    var showSearchResults by remember { mutableStateOf(false) }
+    var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
+    
     val viewModel: PortfolioViewModel = viewModel()
     val portfolio by viewModel.portfolio.collectAsState()
     val loading by viewModel.loading.collectAsState()
@@ -53,13 +59,112 @@ fun DashboardScreen() {
         viewModel.updatePrices(context)
     }
 
+    // Search functionality
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.isNotBlank() && searchQuery.length >= 2) {
+            searchResults = performGlobalSearch(searchQuery)
+            showSearchResults = searchResults.isNotEmpty()
+        } else {
+            searchResults = emptyList()
+            showSearchResults = false
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0E21))) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Header
+            // Global Search Bar
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        label = { Text("Search stocks, crypto, or assets...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF3B82F6),
+                            unfocusedBorderColor = Color(0xFF374151),
+                            cursorColor = Color(0xFF3B82F6),
+                            focusedLabelColor = Color(0xFF3B82F6),
+                            unfocusedLabelColor = Color(0xFF9CA3AF),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = Color(0xFF9CA3AF)
+                            )
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(
+                                        Icons.Default.Clear,
+                                        contentDescription = "Clear",
+                                        tint = Color(0xFF9CA3AF)
+                                    )
+                                }
+                            }
+                        }
+                    )
+                    
+                    // Search Results Dropdown
+                    if (showSearchResults && searchResults.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF374151))
+                        ) {
+                            LazyColumn(
+                                modifier = Modifier.heightIn(max = 300.dp)
+                            ) {
+                                items(searchResults) { result ->
+                                    SearchResultItem(
+                                        result = result,
+                                        onClick = {
+                                            // Navigate to asset detail
+                                            val intent = Intent(context, AssetDetailActivity::class.java).apply {
+                                                putExtra("symbol", result.symbol)
+                                                putExtra("name", result.name)
+                                                putExtra("price", result.price)
+                                                putExtra("change", result.change)
+                                                putExtra("changePercent", result.changePercent)
+                                                putExtra("type", when (result.type) {
+                                                    SearchResultType.INDIAN_STOCK -> "indian_stock"
+                                                    SearchResultType.US_STOCK -> "us_stock"
+                                                    SearchResultType.CRYPTO -> "crypto"
+                                                })
+                                            }
+                                            context.startActivity(intent)
+                                            searchQuery = ""
+                                            showSearchResults = false
+                                        }
+                                    )
+                                    if (result != searchResults.last()) {
+                                        Divider(color = Color(0xFF4B5563), thickness = 0.5.dp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Header
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
             ) {
@@ -587,4 +692,248 @@ fun getMockWatchlist(): List<AssetData> {
         AssetData("BNB", "Binance Coin", 400.0, 10.0, 2.56, "crypto"),
         AssetData("ADA", "Cardano", 0.5, 0.01, 2.04, "crypto")
     )
+}
+
+data class SearchResult(
+    val symbol: String,
+    val name: String,
+    val price: Double,
+    val change: Double,
+    val changePercent: Double,
+    val type: SearchResultType
+)
+
+enum class SearchResultType {
+    INDIAN_STOCK,
+    US_STOCK,
+    CRYPTO
+}
+
+fun performGlobalSearch(query: String): List<SearchResult> {
+    val results = mutableListOf<SearchResult>()
+    val lowerQuery = query.lowercase()
+    
+    // Search Indian stocks
+    IndianStockService.INDIAN_STOCKS.forEach { (symbol, name) ->
+        if (symbol.lowercase().contains(lowerQuery) || name.lowercase().contains(lowerQuery)) {
+            results.add(
+                SearchResult(
+                    symbol = symbol,
+                    name = name,
+                    price = 2450.75, // Mock price - in real app, fetch from API
+                    change = 45.25,
+                    changePercent = 1.88,
+                    type = SearchResultType.INDIAN_STOCK
+                )
+            )
+        }
+    }
+    
+    // Additional important Indian stocks not in the main list
+    val additionalIndianStocks = mapOf(
+        "LIC" to "Life Insurance Corporation of India",
+        "ADANIPORTS" to "Adani Ports & SEZ",
+        "ADANIPOWER" to "Adani Power",
+        "ADANITRANS" to "Adani Transmission",
+        "ADANIGREEN" to "Adani Green Energy",
+        "ADANITOTAL" to "Adani Total Gas",
+        "ADANIWILMAR" to "Adani Wilmar",
+        "HDFC" to "Housing Development Finance Corporation",
+        "HDFCAMC" to "HDFC Asset Management Company",
+        "HINDCOPPER" to "Hindustan Copper",
+        "HINDPETRO" to "Hindustan Petroleum",
+        "HINDZINC" to "Hindustan Zinc",
+        "IDEA" to "Vodafone Idea",
+        "INDIGO" to "InterGlobe Aviation",
+        "IRCTC" to "Indian Railway Catering & Tourism",
+        "JINDALSTEL" to "Jindal Steel & Power",
+        "JSWENERGY" to "JSW Energy",
+        "LUPIN" to "Lupin",
+        "MARICO" to "Marico",
+        "MCDOWELL-N" to "United Spirits",
+        "MUTHOOTFIN" to "Muthoot Finance",
+        "NMDC" to "NMDC",
+        "PEL" to "Piramal Enterprises",
+        "PERSISTENT" to "Persistent Systems",
+        "PIDILITIND" to "Pidilite Industries",
+        "PNB" to "Punjab National Bank",
+        "PVR" to "PVR Cinemas",
+        "RBLBANK" to "RBL Bank",
+        "SAIL" to "Steel Authority of India",
+        "SIEMENS" to "Siemens",
+        "TATACOMM" to "Tata Communications",
+        "TATAPOWER" to "Tata Power",
+        "TORNTPHARM" to "Torrent Pharmaceuticals",
+        "VOLTAS" to "Voltas",
+        "ZEEL" to "Zee Entertainment Enterprises"
+    )
+    
+    additionalIndianStocks.forEach { (symbol, name) ->
+        if (symbol.lowercase().contains(lowerQuery) || name.lowercase().contains(lowerQuery)) {
+            // Check if not already added from main list
+            if (!results.any { it.symbol == symbol }) {
+                results.add(
+                    SearchResult(
+                        symbol = symbol,
+                        name = name,
+                        price = 2450.75, // Mock price
+                        change = 45.25,
+                        changePercent = 1.88,
+                        type = SearchResultType.INDIAN_STOCK
+                    )
+                )
+            }
+        }
+    }
+    
+    // Search US stocks
+    val usStocks = mapOf(
+        "AAPL" to "Apple Inc.",
+        "GOOGL" to "Alphabet Inc.",
+        "MSFT" to "Microsoft Corp.",
+        "AMZN" to "Amazon.com Inc.",
+        "TSLA" to "Tesla Inc.",
+        "META" to "Meta Platforms Inc.",
+        "NVDA" to "NVIDIA Corp.",
+        "NFLX" to "Netflix Inc.",
+        "ADBE" to "Adobe Inc.",
+        "CRM" to "Salesforce Inc.",
+        "PYPL" to "PayPal Holdings Inc.",
+        "INTC" to "Intel Corp.",
+        "AMD" to "Advanced Micro Devices Inc.",
+        "ORCL" to "Oracle Corp.",
+        "IBM" to "International Business Machines Corp.",
+        "CSCO" to "Cisco Systems Inc.",
+        "QCOM" to "Qualcomm Inc.",
+        "TXN" to "Texas Instruments Inc.",
+        "AVGO" to "Broadcom Inc.",
+        "MU" to "Micron Technology Inc."
+    )
+    
+    usStocks.forEach { (symbol, name) ->
+        if (symbol.lowercase().contains(lowerQuery) || name.lowercase().contains(lowerQuery)) {
+            results.add(
+                SearchResult(
+                    symbol = symbol,
+                    name = name,
+                    price = 180.0, // Mock price
+                    change = 2.5,
+                    changePercent = 1.41,
+                    type = SearchResultType.US_STOCK
+                )
+            )
+        }
+    }
+    
+    // Search Crypto
+    val cryptos = mapOf(
+        "BTC" to "Bitcoin",
+        "ETH" to "Ethereum",
+        "BNB" to "Binance Coin",
+        "ADA" to "Cardano",
+        "SOL" to "Solana",
+        "XRP" to "Ripple",
+        "DOT" to "Polkadot",
+        "DOGE" to "Dogecoin",
+        "AVAX" to "Avalanche",
+        "MATIC" to "Polygon",
+        "LINK" to "Chainlink",
+        "UNI" to "Uniswap",
+        "LTC" to "Litecoin",
+        "BCH" to "Bitcoin Cash",
+        "XLM" to "Stellar",
+        "ATOM" to "Cosmos",
+        "FTT" to "FTX Token",
+        "NEAR" to "NEAR Protocol",
+        "ALGO" to "Algorand",
+        "VET" to "VeChain"
+    )
+    
+    cryptos.forEach { (symbol, name) ->
+        if (symbol.lowercase().contains(lowerQuery) || name.lowercase().contains(lowerQuery)) {
+            results.add(
+                SearchResult(
+                    symbol = symbol,
+                    name = name,
+                    price = 45000.0, // Mock price
+                    change = 500.0,
+                    changePercent = 1.12,
+                    type = SearchResultType.CRYPTO
+                )
+            )
+        }
+    }
+    
+    // Return top 10 results
+    return results.take(10)
+}
+
+@Composable
+fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    result.symbol,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                // Asset type indicator
+                Card(
+                    shape = RoundedCornerShape(4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = when (result.type) {
+                            SearchResultType.INDIAN_STOCK -> Color(0xFF10B981)
+                            SearchResultType.US_STOCK -> Color(0xFF3B82F6)
+                            SearchResultType.CRYPTO -> Color(0xFFF59E0B)
+                        }
+                    )
+                ) {
+                    Text(
+                        when (result.type) {
+                            SearchResultType.INDIAN_STOCK -> "IN"
+                            SearchResultType.US_STOCK -> "US"
+                            SearchResultType.CRYPTO -> "CR"
+                        },
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Text(
+                result.name,
+                color = Color(0xFF9CA3AF),
+                fontSize = 14.sp
+            )
+        }
+        
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                when (result.type) {
+                    SearchResultType.INDIAN_STOCK -> "₹${result.price}"
+                    SearchResultType.US_STOCK -> "$${result.price}"
+                    SearchResultType.CRYPTO -> "$${result.price}"
+                },
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "${result.change} (${result.changePercent}%)",
+                color = if (result.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                fontSize = 14.sp
+            )
+        }
+    }
 } 
