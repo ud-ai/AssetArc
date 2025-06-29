@@ -356,22 +356,39 @@ fun IndianStocksScreen() {
                             modifier = Modifier.heightIn(max = 250.dp)
                         ) {
                             items(searchResults) { result ->
+                                var isLoading by remember { mutableStateOf(false) }
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
+                                        .clickable(enabled = !isLoading) {
                                             searchQuery = result
                                             showSearchResults = false
-                                            // Navigate to stock detail
-                                            val intent = Intent(context, AssetDetailActivity::class.java).apply {
-                                                putExtra("symbol", result)
-                                                putExtra("name", IndianStockService.INDIAN_STOCKS[result] ?: result)
-                                                putExtra("price", 2450.75) // Mock price
-                                                putExtra("change", 45.25)
-                                                putExtra("changePercent", 1.88)
-                                                putExtra("type", "indian_stock")
+                                            isLoading = true
+                                            // Fetch real price and navigate
+                                            val ctx = context
+                                            val symbol = result
+                                            coroutineScope.launch {
+                                                try {
+                                                    val stockData = stockService.getStockPrice(symbol, ctx)
+                                                    isLoading = false
+                                                    if (stockData != null) {
+                                                        val intent = Intent(ctx, AssetDetailActivity::class.java).apply {
+                                                            putExtra("symbol", stockData.symbol)
+                                                            putExtra("name", stockData.name)
+                                                            putExtra("price", stockData.price)
+                                                            putExtra("change", stockData.change)
+                                                            putExtra("changePercent", stockData.changePercent)
+                                                            putExtra("type", "indian_stock")
+                                                        }
+                                                        ctx.startActivity(intent)
+                                                    } else {
+                                                        Toast.makeText(ctx, "Failed to fetch stock data", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                } catch (e: Exception) {
+                                                    isLoading = false
+                                                    Toast.makeText(ctx, "Error fetching stock data", Toast.LENGTH_SHORT).show()
+                                                }
                                             }
-                                            context.startActivity(intent)
                                         }
                                         .padding(12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -390,17 +407,25 @@ fun IndianStocksScreen() {
                                             fontSize = 14.sp
                                         )
                                     }
-                                    Card(
-                                        shape = RoundedCornerShape(4.dp),
-                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981))
-                                    ) {
-                                        Text(
-                                            "IN",
-                                            color = Color.White,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    if (isLoading) {
+                                        CircularProgressIndicator(
+                                            color = Color(0xFF10B981),
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp
                                         )
+                                    } else {
+                                        Card(
+                                            shape = RoundedCornerShape(4.dp),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981))
+                                        ) {
+                                            Text(
+                                                "IN",
+                                                color = Color.White,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
                                     }
                                 }
                                 if (result != searchResults.last()) {
@@ -754,9 +779,30 @@ fun MarketContent(overview: MarketOverview?) {
 @Composable
 fun StockListItem(stock: TrendingStock, onClick: () -> Unit) {
     var showAddDialog by remember { mutableStateOf(false) }
+    var price by remember { mutableStateOf(stock.price) }
+    var change by remember { mutableStateOf(stock.change) }
+    var changePercent by remember { mutableStateOf(stock.changePercent) }
+    var isLoading by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val viewModel = viewModel<PortfolioViewModel>()
-    
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(stock.symbol) {
+        isLoading = true
+        val stockService = IndianStockService()
+        coroutineScope.launch {
+            try {
+                val stockData = stockService.getStockPrice(stock.symbol, context)
+                if (stockData != null) {
+                    price = stockData.price
+                    change = stockData.change
+                    changePercent = stockData.changePercent
+                }
+            } catch (_: Exception) {}
+            isLoading = false
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -775,12 +821,20 @@ fun StockListItem(stock: TrendingStock, onClick: () -> Unit) {
                 Text(stock.name, color = Color(0xFF9CA3AF), fontSize = 14.sp)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("₹${stock.price}", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    "${stock.change} (${stock.changePercent}%)",
-                    color = if (stock.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
-                    fontSize = 14.sp
-                )
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        color = Color(0xFF10B981),
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("₹${String.format("%.2f", price)}", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "${String.format("%.2f", change)} (${String.format("%.2f", changePercent)}%)",
+                        color = if (changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                        fontSize = 14.sp
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(8.dp))
             IconButton(
@@ -799,10 +853,9 @@ fun StockListItem(stock: TrendingStock, onClick: () -> Unit) {
             }
         }
     }
-    
     if (showAddDialog) {
         AddIndianStockDialog(
-            stock = stock,
+            stock = stock.copy(price = price, change = change, changePercent = changePercent),
             onAdd = { quantity ->
                 viewModel.addAsset(AssetType.IndianStock, stock.symbol, quantity, context)
                 showAddDialog = false

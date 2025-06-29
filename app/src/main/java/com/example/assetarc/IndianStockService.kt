@@ -52,7 +52,7 @@ class IndianStockService {
         private const val TAG = "IndianStockService"
         private const val YAHOO_FINANCE_BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart/"
         private const val ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query"
-        private const val ALPHA_VANTAGE_API_KEY = "demo" // Free demo key
+        private const val ALPHA_VANTAGE_API_KEY = "YS4SA0VVGZ8ZQW6MR"
         
         // Popular Indian stocks with their symbols
         val INDIAN_STOCKS = mapOf(
@@ -156,28 +156,28 @@ class IndianStockService {
     suspend fun getStockPrice(symbol: String, context: Context?): StockData? {
         return try {
             Log.d(TAG, "Fetching price for Indian stock: $symbol")
-            
             // Try Yahoo Finance first
             val yahooData = getYahooFinanceData(symbol)
             if (yahooData != null) {
                 Log.d(TAG, "Successfully fetched data from Yahoo Finance for $symbol")
                 return yahooData
             }
-            
-            // Fallback to Alpha Vantage
-            val alphaData = getAlphaVantageData(symbol)
-            if (alphaData != null) {
-                Log.d(TAG, "Successfully fetched data from Alpha Vantage for $symbol")
-                return alphaData
+            // Try Alpha Vantage with .BSE and .NSE
+            val bseData = getAlphaVantageData(symbol, exchange = "BSE")
+            if (bseData != null) {
+                Log.d(TAG, "Successfully fetched data from Alpha Vantage for $symbol.BSE")
+                return bseData
             }
-            
-            // Return mock data if both APIs fail
-            Log.d(TAG, "Both APIs failed, returning mock data for $symbol")
-            getMockStockData(symbol)
-            
+            val nseData = getAlphaVantageData(symbol, exchange = "NSE")
+            if (nseData != null) {
+                Log.d(TAG, "Successfully fetched data from Alpha Vantage for $symbol.NSE")
+                return nseData
+            }
+            Log.e(TAG, "Both APIs failed, returning null for $symbol")
+            null
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching stock price for $symbol", e)
-            getMockStockData(symbol)
+            null
         }
     }
 
@@ -187,40 +187,37 @@ class IndianStockService {
                 // Add .NS suffix for Indian stocks on Yahoo Finance
                 val fullSymbol = if (!symbol.endsWith(".NS")) "$symbol.NS" else symbol
                 val url = URL("$YAHOO_FINANCE_BASE_URL$fullSymbol?interval=1d&range=1d")
-                
-                Log.d(TAG, "Yahoo Finance URL: $url")
-                
+                Log.d(TAG, "Yahoo Finance URL: $url for symbol: $fullSymbol")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 connection.connectTimeout = 10000
                 connection.readTimeout = 10000
-                
                 val responseCode = connection.responseCode
-                Log.d(TAG, "Yahoo Finance response code: $responseCode")
-                
+                Log.d(TAG, "Yahoo Finance response code: $responseCode for symbol: $fullSymbol")
                 if (responseCode == 200) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    Log.d(TAG, "Yahoo Finance response: ${response.take(500)}...")
-                    
+                    Log.d(TAG, "Yahoo Finance response for $fullSymbol: ${response.take(500)}...")
                     val json = JSONObject(response)
                     val chart = json.getJSONObject("chart")
                     val result = chart.getJSONArray("result").getJSONObject(0)
                     val meta = result.getJSONObject("meta")
-                    val timestamp = result.getJSONArray("timestamp")
                     val indicators = result.getJSONObject("indicators")
                     val quote = indicators.getJSONArray("quote").getJSONObject(0)
-                    
-                    val currentPrice = meta.getDouble("regularMarketPrice")
-                    val previousClose = meta.getDouble("previousClose")
+                    val currentPrice = meta.optDouble("regularMarketPrice", 0.0)
+                    val previousClose: Double
+                    if (meta.has("previousClose")) {
+                        previousClose = meta.optDouble("previousClose", 0.0)
+                    } else {
+                        Log.w(TAG, "Yahoo Finance response missing 'previousClose' for $fullSymbol. Using 0.0 as default.")
+                        previousClose = 0.0
+                    }
                     val change = currentPrice - previousClose
-                    val changePercent = (change / previousClose) * 100
-                    
-                    val open = quote.getJSONArray("open").getDouble(0)
-                    val high = quote.getJSONArray("high").getDouble(0)
-                    val low = quote.getJSONArray("low").getDouble(0)
-                    val volume = quote.getJSONArray("volume").getLong(0)
-                    
+                    val changePercent = if (previousClose != 0.0) (change / previousClose) * 100 else 0.0
+                    val open = quote.getJSONArray("open").optDouble(0, 0.0)
+                    val high = quote.getJSONArray("high").optDouble(0, 0.0)
+                    val low = quote.getJSONArray("low").optDouble(0, 0.0)
+                    val volume = quote.getJSONArray("volume").optLong(0, 0L)
                     StockData(
                         symbol = symbol.uppercase(),
                         name = getStockName(symbol),
@@ -235,49 +232,47 @@ class IndianStockService {
                         previousClose = previousClose
                     )
                 } else {
-                    Log.w(TAG, "Yahoo Finance failed with response code: $responseCode")
+                    Log.w(TAG, "Yahoo Finance failed with response code: $responseCode for $fullSymbol")
                     null
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error fetching from Yahoo Finance", e)
+                Log.e(TAG, "Error fetching from Yahoo Finance for $symbol", e)
                 null
             }
         }
     }
 
-    private suspend fun getAlphaVantageData(symbol: String): StockData? {
+    private suspend fun getAlphaVantageData(symbol: String, exchange: String = "BSE"): StockData? {
         return withContext(Dispatchers.IO) {
             try {
-                val url = URL("$ALPHA_VANTAGE_BASE_URL?function=GLOBAL_QUOTE&symbol=$symbol.BSE&apikey=$ALPHA_VANTAGE_API_KEY")
-                
-                Log.d(TAG, "Alpha Vantage URL: $url")
-                
+                val fullSymbol = if (exchange == "BSE" || exchange == "NSE") "$symbol.$exchange" else symbol
+                val url = URL("$ALPHA_VANTAGE_BASE_URL?function=GLOBAL_QUOTE&symbol=$fullSymbol&apikey=$ALPHA_VANTAGE_API_KEY")
+                Log.d(TAG, "Alpha Vantage URL: $url for symbol: $fullSymbol")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 10000
                 connection.readTimeout = 10000
-                
                 val responseCode = connection.responseCode
-                Log.d(TAG, "Alpha Vantage response code: $responseCode")
-                
+                Log.d(TAG, "Alpha Vantage response code: $responseCode for symbol: $fullSymbol")
                 if (responseCode == 200) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    Log.d(TAG, "Alpha Vantage response: ${response.take(500)}...")
-                    
+                    Log.d(TAG, "Alpha Vantage response for $fullSymbol: ${response.take(500)}...")
                     val json = JSONObject(response)
+                    if (!json.has("Global Quote") || json.getJSONObject("Global Quote").length() == 0) {
+                        Log.w(TAG, "Alpha Vantage returned empty Global Quote for $fullSymbol")
+                        return@withContext null
+                    }
                     val globalQuote = json.getJSONObject("Global Quote")
-                    
-                    val currentPrice = globalQuote.getString("05. price").toDouble()
-                    val change = globalQuote.getString("09. change").toDouble()
-                    val changePercent = globalQuote.getString("10. change percent").removeSuffix("%").toDouble()
-                    val volume = globalQuote.getString("06. volume").toLong()
-                    val previousClose = globalQuote.getString("08. previous close").toDouble()
-                    val open = globalQuote.getString("02. open").toDouble()
-                    val high = globalQuote.getString("03. high").toDouble()
-                    val low = globalQuote.getString("04. low").toDouble()
-                    
+                    val currentPrice = globalQuote.getString("05. price").toDoubleOrNull() ?: return@withContext null
+                    val change = globalQuote.getString("09. change").toDoubleOrNull() ?: 0.0
+                    val changePercent = globalQuote.getString("10. change percent").removeSuffix("%").toDoubleOrNull() ?: 0.0
+                    val volume = globalQuote.optString("06. volume").toLongOrNull() ?: 0L
+                    val previousClose = globalQuote.optString("08. previous close").toDoubleOrNull() ?: 0.0
+                    val open = globalQuote.optString("02. open").toDoubleOrNull() ?: 0.0
+                    val high = globalQuote.optString("03. high").toDoubleOrNull() ?: 0.0
+                    val low = globalQuote.optString("04. low").toDoubleOrNull() ?: 0.0
                     StockData(
-                        symbol = symbol.uppercase(),
+                        symbol = fullSymbol.uppercase(),
                         name = getStockName(symbol),
                         price = currentPrice,
                         change = change,
@@ -290,48 +285,14 @@ class IndianStockService {
                         previousClose = previousClose
                     )
                 } else {
-                    Log.w(TAG, "Alpha Vantage failed with response code: $responseCode")
+                    Log.w(TAG, "Alpha Vantage failed with response code: $responseCode for $fullSymbol")
                     null
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error fetching from Alpha Vantage", e)
+                Log.e(TAG, "Error fetching from Alpha Vantage for $symbol.$exchange", e)
                 null
             }
         }
-    }
-
-    private fun getMockStockData(symbol: String): StockData {
-        val mockData = mapOf(
-            "RELIANCE" to StockData("RELIANCE", "Reliance Industries Ltd", 2450.75, 45.25, 1.88, 12500000, 1650000.0, 2480.0, 2400.0, 2405.5, 2405.5),
-            "TCS" to StockData("TCS", "Tata Consultancy Services Ltd", 3850.25, -25.75, -0.66, 8500000, 1450000.0, 3900.0, 3800.0, 3876.0, 3876.0),
-            "HDFCBANK" to StockData("HDFCBANK", "HDFC Bank Ltd", 1650.50, 12.50, 0.76, 9800000, 950000.0, 1665.0, 1635.0, 1638.0, 1638.0),
-            "INFY" to StockData("INFY", "Infosys Ltd", 1450.75, 35.25, 2.49, 12000000, 600000.0, 1465.0, 1415.0, 1415.5, 1415.5),
-            "ICICIBANK" to StockData("ICICIBANK", "ICICI Bank Ltd", 950.25, -15.75, -1.63, 15000000, 650000.0, 970.0, 940.0, 966.0, 966.0),
-            "HINDUNILVR" to StockData("HINDUNILVR", "Hindustan Unilever Ltd", 2450.00, 50.00, 2.08, 3500000, 580000.0, 2460.0, 2400.0, 2400.0, 2400.0),
-            "ITC" to StockData("ITC", "ITC Ltd", 450.75, 8.25, 1.86, 25000000, 570000.0, 455.0, 442.5, 442.5, 442.5),
-            "SBIN" to StockData("SBIN", "State Bank of India", 650.50, 12.50, 1.96, 20000000, 580000.0, 655.0, 638.0, 638.0, 638.0),
-            "BHARTIARTL" to StockData("BHARTIARTL", "Bharti Airtel Ltd", 850.25, -20.75, -2.38, 12000000, 470000.0, 875.0, 845.0, 871.0, 871.0),
-            "KOTAKBANK" to StockData("KOTAKBANK", "Kotak Mahindra Bank Ltd", 1850.75, 25.75, 1.41, 4500000, 370000.0, 1865.0, 1825.0, 1825.0, 1825.0),
-            "AXISBANK" to StockData("AXISBANK", "Axis Bank Ltd", 950.50, -10.50, -1.09, 12000000, 290000.0, 965.0, 945.0, 961.0, 961.0),
-            "ASIANPAINT" to StockData("ASIANPAINT", "Asian Paints Ltd", 3250.25, 75.25, 2.37, 2800000, 310000.0, 3275.0, 3175.0, 3175.0, 3175.0),
-            "MARUTI" to StockData("MARUTI", "Maruti Suzuki India Ltd", 9500.75, 150.75, 1.61, 1800000, 290000.0, 9550.0, 9350.0, 9350.0, 9350.0),
-            "SUNPHARMA" to StockData("SUNPHARMA", "Sun Pharmaceutical Industries Ltd", 950.25, 20.25, 2.18, 8500000, 230000.0, 960.0, 930.0, 930.0, 930.0),
-            "TATAMOTORS" to StockData("TATAMOTORS", "Tata Motors Ltd", 650.50, 25.50, 4.08, 25000000, 210000.0, 660.0, 625.0, 625.0, 625.0)
-        )
-        
-        return mockData[symbol.uppercase()] ?: StockData(
-            symbol = symbol.uppercase(),
-            name = "$symbol Ltd",
-            price = 1000.0,
-            change = 10.0,
-            changePercent = 1.0,
-            volume = 1000000,
-            marketCap = 100000.0,
-            high = 1010.0,
-            low = 990.0,
-            open = 990.0,
-            previousClose = 990.0
-        )
     }
 
     fun getStockName(symbol: String): String {
@@ -380,14 +341,7 @@ class IndianStockService {
             gainers.sortedByDescending { it.changePercent }.take(5)
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching top gainers", e)
-            // Fallback to mock data
-            listOf(
-                TrendingStock("TATAMOTORS", "Tata Motors Ltd", 650.50, 25.50, 4.08, 25000000),
-                TrendingStock("ASIANPAINT", "Asian Paints Ltd", 3250.25, 75.25, 2.37, 2800000),
-                TrendingStock("INFY", "Infosys Ltd", 1450.75, 35.25, 2.49, 12000000),
-                TrendingStock("HINDUNILVR", "Hindustan Unilever Ltd", 2450.00, 50.00, 2.08, 3500000),
-                TrendingStock("RELIANCE", "Reliance Industries Ltd", 2450.75, 45.25, 1.88, 12500000)
-            )
+            emptyList()
         }
     }
 
@@ -420,49 +374,27 @@ class IndianStockService {
             losers.sortedBy { it.changePercent }.take(5)
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching top losers", e)
-            // Fallback to mock data
-            listOf(
-                TrendingStock("BHARTIARTL", "Bharti Airtel Ltd", 850.25, -20.75, -2.38, 12000000),
-                TrendingStock("AXISBANK", "Axis Bank Ltd", 950.50, -10.50, -1.09, 12000000),
-                TrendingStock("ICICIBANK", "ICICI Bank Ltd", 950.25, -15.75, -1.63, 15000000),
-                TrendingStock("TCS", "Tata Consultancy Services Ltd", 3850.25, -25.75, -0.66, 8500000),
-                TrendingStock("KOTAKBANK", "Kotak Mahindra Bank Ltd", 1850.75, 25.75, 1.41, 4500000)
-            )
+            emptyList()
         }
     }
 
-    suspend fun getMarketOverview(): MarketOverview {
+    suspend fun getMarketOverview(): MarketOverview? {
         return try {
             // Fetch real-time data for Sensex and Nifty
             val sensexData = getStockPrice("^BSESN", null) // Sensex symbol
             val niftyData = getStockPrice("^NSEI", null)   // Nifty symbol
-            
-            val sensex = sensexData?.price ?: 72500.50
-            val nifty = niftyData?.price ?: 21850.25
-            val sensexChange = sensexData?.change ?: 450.75
-            val niftyChange = niftyData?.change ?: 125.50
-            val sensexChangePercent = sensexData?.changePercent ?: 0.63
-            val niftyChangePercent = niftyData?.changePercent ?: 0.58
-            
+            if (sensexData == null || niftyData == null) return null
             MarketOverview(
-                sensex = sensex,
-                nifty = nifty,
-                sensexChange = sensexChange,
-                niftyChange = niftyChange,
-                sensexChangePercent = sensexChangePercent,
-                niftyChangePercent = niftyChangePercent
+                sensex = sensexData.price,
+                nifty = niftyData.price,
+                sensexChange = sensexData.change,
+                niftyChange = niftyData.change,
+                sensexChangePercent = sensexData.changePercent,
+                niftyChangePercent = niftyData.changePercent
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching market overview", e)
-            // Fallback to mock data
-            MarketOverview(
-                sensex = 72500.50,
-                nifty = 21850.25,
-                sensexChange = 450.75,
-                niftyChange = 125.50,
-                sensexChangePercent = 0.63,
-                niftyChangePercent = 0.58
-            )
+            null
         }
     }
 
@@ -495,17 +427,7 @@ class IndianStockService {
             trending
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching trending stocks", e)
-            // Fallback to mock data
-            listOf(
-                TrendingStock("RELIANCE", "Reliance Industries Ltd", 2450.75, 45.25, 1.88, 12500000),
-                TrendingStock("TCS", "Tata Consultancy Services Ltd", 3850.25, -25.75, -0.66, 8500000),
-                TrendingStock("HDFCBANK", "HDFC Bank Ltd", 1650.50, 12.50, 0.76, 9800000),
-                TrendingStock("INFY", "Infosys Ltd", 1450.75, 35.25, 2.49, 12000000),
-                TrendingStock("ICICIBANK", "ICICI Bank Ltd", 950.25, -15.75, -1.63, 15000000),
-                TrendingStock("HINDUNILVR", "Hindustan Unilever Ltd", 2450.00, 50.00, 2.08, 3500000),
-                TrendingStock("ITC", "ITC Ltd", 450.75, 8.25, 1.86, 25000000),
-                TrendingStock("SBIN", "State Bank of India", 650.50, 12.50, 1.96, 20000000)
-            )
+            emptyList()
         }
     }
 } 

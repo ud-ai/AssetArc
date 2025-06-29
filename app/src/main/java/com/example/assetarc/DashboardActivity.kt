@@ -2,6 +2,7 @@ package com.example.assetarc
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
@@ -39,6 +40,7 @@ import com.example.assetarc.ui.theme.AssetArcTheme
 import androidx.compose.foundation.Canvas
 import android.util.Log
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,8 +74,10 @@ fun DashboardScreen() {
     val error by viewModel.error.collectAsState()
     val isRealTimeUpdatesEnabled by viewModel.isRealTimeUpdatesEnabled.collectAsState()
     
-    val indianStockService = remember { IndianStockService() }
+    val coroutineScope = rememberCoroutineScope()
+    val stockService = remember { IndianStockService() }
     val usStockService = remember { USStockService() }
+    val portfolioViewModel = remember { PortfolioViewModel.getInstance() }
 
     // Start real-time updates
     LaunchedEffect(Unit) {
@@ -94,22 +98,33 @@ fun DashboardScreen() {
             loading = true
             
             // Load Indian market overview
-            marketOverview = indianStockService.getMarketOverview()
+            marketOverview = stockService.getMarketOverview()
             
             // Load trending assets (mix of Indian stocks, US stocks, and crypto)
             val trendingList = mutableListOf<AssetData>()
             
             // Add Indian stocks
-            val indianTrending = indianStockService.getTrendingStocks().take(3)
-            indianTrending.forEach { stock ->
+            val indianTrending = stockService.getTrendingStocks().take(3)
+            if (indianTrending.isEmpty()) {
                 trendingList.add(AssetData(
-                    symbol = stock.symbol,
-                    name = stock.name,
-                    price = stock.price,
-                    change = stock.change,
-                    changePercent = stock.changePercent,
+                    symbol = "N/A",
+                    name = "Live data unavailable",
+                    price = 0.0,
+                    change = 0.0,
+                    changePercent = 0.0,
                     type = "indian_stock"
                 ))
+            } else {
+                indianTrending.forEach { stock ->
+                    trendingList.add(AssetData(
+                        symbol = stock.symbol,
+                        name = stock.name,
+                        price = stock.price,
+                        change = stock.change,
+                        changePercent = stock.changePercent,
+                        type = "indian_stock"
+                    ))
+                }
             }
             
             // Add US stocks
@@ -128,7 +143,7 @@ fun DashboardScreen() {
             trendingAssets = trendingList
             
             // Load top gainers
-            topGainers = indianStockService.getTopGainers().map { trendingStock ->
+            topGainers = stockService.getTopGainers().map { trendingStock ->
                 StockData(
                     symbol = trendingStock.symbol,
                     name = trendingStock.name,
@@ -165,6 +180,14 @@ fun DashboardScreen() {
         } else {
             searchResults = emptyList()
             showSearchResults = false
+        }
+    }
+
+    // Auto-refresh every 15 seconds
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(15000)
+            refreshAllData()
         }
     }
 
@@ -227,27 +250,103 @@ fun DashboardScreen() {
                                 modifier = Modifier.heightIn(max = 300.dp)
                             ) {
                                 items(searchResults) { result ->
+                                    var isLoading by remember { mutableStateOf(false) }
                                     SearchResultItem(
                                         result = result,
                                         onClick = {
-                                            // Navigate to asset detail
-                                            val intent = Intent(context, AssetDetailActivity::class.java).apply {
-                                                putExtra("symbol", result.symbol)
-                                                putExtra("name", result.name)
-                                                putExtra("price", result.price)
-                                                putExtra("change", result.change)
-                                                putExtra("changePercent", result.changePercent)
-                                                putExtra("type", when (result.type) {
-                                                    SearchResultType.INDIAN_STOCK -> "indian_stock"
-                                                    SearchResultType.US_STOCK -> "us_stock"
-                                                    SearchResultType.CRYPTO -> "crypto"
-                                                })
+                                            val ctx = context
+                                            when (result.type) {
+                                                SearchResultType.INDIAN_STOCK -> {
+                                                    isLoading = true
+                                                    val symbol = result.symbol
+                                                    coroutineScope.launch {
+                                                        try {
+                                                            val stockData = stockService.getStockPrice(symbol, ctx)
+                                                            isLoading = false
+                                                            if (stockData != null) {
+                                                                val intent = Intent(ctx, AssetDetailActivity::class.java).apply {
+                                                                    putExtra("symbol", stockData.symbol)
+                                                                    putExtra("name", stockData.name)
+                                                                    putExtra("price", stockData.price)
+                                                                    putExtra("change", stockData.change)
+                                                                    putExtra("changePercent", stockData.changePercent)
+                                                                    putExtra("type", "indian_stock")
+                                                                }
+                                                                ctx.startActivity(intent)
+                                                            } else {
+                                                                Toast.makeText(ctx, "Failed to fetch stock data", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        } catch (e: Exception) {
+                                                            isLoading = false
+                                                            Toast.makeText(ctx, "Error fetching stock data", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                }
+                                                SearchResultType.US_STOCK -> {
+                                                    isLoading = true
+                                                    val symbol = result.symbol
+                                                    coroutineScope.launch {
+                                                        try {
+                                                            val stockData = usStockService.getStockPrice(symbol, ctx)
+                                                            isLoading = false
+                                                            if (stockData != null) {
+                                                                val intent = Intent(ctx, AssetDetailActivity::class.java).apply {
+                                                                    putExtra("symbol", stockData.symbol)
+                                                                    putExtra("name", stockData.name)
+                                                                    putExtra("price", stockData.price)
+                                                                    putExtra("change", stockData.change)
+                                                                    putExtra("changePercent", stockData.changePercent)
+                                                                    putExtra("type", "us_stock")
+                                                                }
+                                                                ctx.startActivity(intent)
+                                                            } else {
+                                                                Toast.makeText(ctx, "Failed to fetch US stock data", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        } catch (e: Exception) {
+                                                            isLoading = false
+                                                            Toast.makeText(ctx, "Error fetching US stock data", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                }
+                                                SearchResultType.CRYPTO -> {
+                                                    isLoading = true
+                                                    val symbol = result.symbol
+                                                    coroutineScope.launch {
+                                                        try {
+                                                            val price = portfolioViewModel.fetchCoinGeckoPrice(symbol)
+                                                            isLoading = false
+                                                            if (price != null) {
+                                                                val name = portfolioViewModel.getCryptoName(symbol)
+                                                                val intent = Intent(ctx, AssetDetailActivity::class.java).apply {
+                                                                    putExtra("symbol", symbol)
+                                                                    putExtra("name", name)
+                                                                    putExtra("price", price)
+                                                                    putExtra("change", 0.0) // You can fetch 24h change if needed
+                                                                    putExtra("changePercent", 0.0)
+                                                                    putExtra("type", "crypto")
+                                                                }
+                                                                ctx.startActivity(intent)
+                                                            } else {
+                                                                Toast.makeText(ctx, "Failed to fetch crypto price", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        } catch (e: Exception) {
+                                                            isLoading = false
+                                                            Toast.makeText(ctx, "Error fetching crypto price", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                }
                                             }
-                                            context.startActivity(intent)
                                             searchQuery = ""
                                             showSearchResults = false
                                         }
                                     )
+                                    if (isLoading) {
+                                        CircularProgressIndicator(
+                                            color = Color(0xFF10B981),
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
                                     if (result != searchResults.last()) {
                                         Divider(color = Color(0xFF4B5563), thickness = 0.5.dp)
                                     }
@@ -390,7 +489,7 @@ fun DashboardScreen() {
 
             // Content based on selected tab
             when (selectedTab) {
-                0 -> OverviewTab(viewModel)
+                0 -> OverviewTab(viewModel, topGainers, trendingAssets)
                 1 -> PortfolioTab(viewModel)
                 2 -> WatchlistTab(viewModel)
             }
@@ -436,10 +535,13 @@ fun DashboardScreen() {
 }
 
 @Composable
-fun OverviewTab(viewModel: PortfolioViewModel) {
+fun OverviewTab(
+    viewModel: PortfolioViewModel,
+    topGainers: List<StockData>,
+    trendingAssets: List<AssetData>
+) {
     val context = LocalContext.current
     val portfolio by viewModel.portfolio.collectAsState()
-    
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
     ) {
@@ -458,14 +560,12 @@ fun OverviewTab(viewModel: PortfolioViewModel) {
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    
                     MarketOverviewItem("NIFTY 50", "₹19,850.25", "+125.50", "+0.64%", true)
                     MarketOverviewItem("SENSEX", "₹66,150.75", "+425.25", "+0.65%", true)
                     MarketOverviewItem("BANK NIFTY", "₹44,250.50", "-125.75", "-0.28%", false)
                 }
             }
         }
-        
         item {
             // Top Gainers
             Card(
@@ -481,8 +581,7 @@ fun OverviewTab(viewModel: PortfolioViewModel) {
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    
-                    getMockTopGainers().forEach { stock ->
+                    topGainers.forEach { stock ->
                         StockListItem(
                             stock = stock,
                             onClick = {
@@ -501,7 +600,6 @@ fun OverviewTab(viewModel: PortfolioViewModel) {
                 }
             }
         }
-        
         item {
             // Trending Assets
             Card(
@@ -517,8 +615,7 @@ fun OverviewTab(viewModel: PortfolioViewModel) {
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    
-                    getMockTrendingAssets().forEach { asset ->
+                    trendingAssets.forEach { asset ->
                         AssetListItem(
                             asset = asset,
                             onClick = {
@@ -722,6 +819,60 @@ fun StockListItem(stock: StockData, onClick: () -> Unit) {
 
 @Composable
 fun AssetListItem(asset: AssetData, onClick: () -> Unit) {
+    var price by remember { mutableStateOf(asset.price) }
+    var change by remember { mutableStateOf(asset.change) }
+    var changePercent by remember { mutableStateOf(asset.changePercent) }
+    var isLoading by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(asset.symbol, asset.type) {
+        isLoading = true
+        when (asset.type) {
+            "indian_stock" -> {
+                val stockService = IndianStockService()
+                coroutineScope.launch {
+                    try {
+                        val stockData = stockService.getStockPrice(asset.symbol, context)
+                        if (stockData != null) {
+                            price = stockData.price
+                            change = stockData.change
+                            changePercent = stockData.changePercent
+                        }
+                    } catch (_: Exception) {}
+                    isLoading = false
+                }
+            }
+            "us_stock" -> {
+                val stockService = USStockService()
+                coroutineScope.launch {
+                    try {
+                        val stockData = stockService.getStockPrice(asset.symbol, context)
+                        if (stockData != null) {
+                            price = stockData.price
+                            change = stockData.change
+                            changePercent = stockData.changePercent
+                        }
+                    } catch (_: Exception) {}
+                    isLoading = false
+                }
+            }
+            "crypto" -> {
+                val portfolioViewModel = PortfolioViewModel.getInstance()
+                coroutineScope.launch {
+                    try {
+                        val fetchedPrice = portfolioViewModel.fetchCoinGeckoPrice(asset.symbol)
+                        if (fetchedPrice != null) {
+                            price = fetchedPrice
+                            // Optionally fetch 24h change here
+                        }
+                    } catch (_: Exception) {}
+                    isLoading = false
+                }
+            }
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -740,21 +891,28 @@ fun AssetListItem(asset: AssetData, onClick: () -> Unit) {
                 Text(asset.name, color = Color(0xFF9CA3AF), fontSize = 14.sp)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    when (asset.type) {
-                        "stock" -> "₹${asset.price}"
-                        "crypto" -> "$${asset.price}"
-                        else -> "₹${asset.price}"
-                    },
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "${asset.change} (${asset.changePercent}%)",
-                    color = if (asset.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
-                    fontSize = 14.sp
-                )
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        color = Color(0xFF10B981),
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        when (asset.type) {
+                            "crypto" -> "$${String.format("%.2f", price)}"
+                            else -> "₹${String.format("%.2f", price)}"
+                        },
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "${String.format("%.2f", change)} (${String.format("%.2f", changePercent)}%)",
+                        color = if (changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                        fontSize = 14.sp
+                    )
+                }
             }
         }
     }
@@ -762,6 +920,60 @@ fun AssetListItem(asset: AssetData, onClick: () -> Unit) {
 
 @Composable
 fun PortfolioItemCard(item: PortfolioItem, onClick: () -> Unit) {
+    var price by remember { mutableStateOf(item.price) }
+    var change by remember { mutableStateOf(item.change) }
+    var changePercent by remember { mutableStateOf(item.changePercent) }
+    var isLoading by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(item.symbol, item.type) {
+        isLoading = true
+        when (item.type) {
+            is AssetType.IndianStock -> {
+                val stockService = IndianStockService()
+                coroutineScope.launch {
+                    try {
+                        val stockData = stockService.getStockPrice(item.symbol, context)
+                        if (stockData != null) {
+                            price = stockData.price
+                            change = stockData.change
+                            changePercent = stockData.changePercent
+                        }
+                    } catch (_: Exception) {}
+                    isLoading = false
+                }
+            }
+            is AssetType.Stock -> {
+                val stockService = USStockService()
+                coroutineScope.launch {
+                    try {
+                        val stockData = stockService.getStockPrice(item.symbol, context)
+                        if (stockData != null) {
+                            price = stockData.price
+                            change = stockData.change
+                            changePercent = stockData.changePercent
+                        }
+                    } catch (_: Exception) {}
+                    isLoading = false
+                }
+            }
+            is AssetType.Crypto -> {
+                val portfolioViewModel = PortfolioViewModel.getInstance()
+                coroutineScope.launch {
+                    try {
+                        val fetchedPrice = portfolioViewModel.fetchCoinGeckoPrice(item.symbol)
+                        if (fetchedPrice != null) {
+                            price = fetchedPrice
+                            // Optionally fetch 24h change here
+                        }
+                    } catch (_: Exception) {}
+                    isLoading = false
+                }
+            }
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -781,30 +993,38 @@ fun PortfolioItemCard(item: PortfolioItem, onClick: () -> Unit) {
                 Text("Qty: ${item.quantity}", color = Color(0xFF6B7280), fontSize = 12.sp)
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    when (item.type) {
-                        is AssetType.IndianStock -> "₹${String.format("%.2f", item.price)}"
-                        is AssetType.Stock -> "$${String.format("%.2f", item.price)}"
-                        is AssetType.Crypto -> "$${String.format("%.2f", item.price)}"
-                    },
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "${String.format("%.2f", item.changePercent)}%",
-                    color = if (item.changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
-                    fontSize = 14.sp
-                )
-                Text(
-                    "Value: ${when (item.type) {
-                        is AssetType.IndianStock -> "₹${String.format("%.2f", item.quantity * item.price)}"
-                        is AssetType.Stock -> "$${String.format("%.2f", item.quantity * item.price)}"
-                        is AssetType.Crypto -> "$${String.format("%.2f", item.quantity * item.price)}"
-                    }}",
-                    color = Color(0xFF6B7280),
-                    fontSize = 12.sp
-                )
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        color = Color(0xFF10B981),
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        when (item.type) {
+                            is AssetType.IndianStock -> "₹${String.format("%.2f", price)}"
+                            is AssetType.Stock -> "$${String.format("%.2f", price)}"
+                            is AssetType.Crypto -> "$${String.format("%.2f", price)}"
+                        },
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "${String.format("%.2f", changePercent)}%",
+                        color = if (changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        "Value: ${when (item.type) {
+                            is AssetType.IndianStock -> "₹${String.format("%.2f", item.quantity * price)}"
+                            is AssetType.Stock -> "$${String.format("%.2f", item.quantity * price)}"
+                            is AssetType.Crypto -> "$${String.format("%.2f", item.quantity * price)}"
+                        }}",
+                        color = Color(0xFF6B7280),
+                        fontSize = 12.sp
+                    )
+                }
             }
         }
     }

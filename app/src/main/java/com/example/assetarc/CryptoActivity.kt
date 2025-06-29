@@ -372,7 +372,7 @@ fun AddCryptoDialog(trending: List<CryptoTrending>, onAdd: (String, Double) -> U
         title = { Text("Add Crypto", color = Color.White) },
         text = {
             Column {
-                ExposedDropdownMenuBox(
+                  ExposedDropdownMenuBox(
                     expanded = expanded,
                     onExpandedChange = { expanded = !expanded }
                 ) {

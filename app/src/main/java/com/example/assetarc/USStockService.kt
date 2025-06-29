@@ -218,15 +218,20 @@ class USStockService {
                     val indicators = result.getJSONObject("indicators")
                     val quote = indicators.getJSONArray("quote").getJSONObject(0)
                     
-                    val currentPrice = meta.getDouble("regularMarketPrice")
-                    val previousClose = meta.getDouble("previousClose")
+                    val currentPrice = meta.optDouble("regularMarketPrice", 0.0)
+                    val previousClose: Double
+                    if (meta.has("previousClose")) {
+                        previousClose = meta.optDouble("previousClose", 0.0)
+                    } else {
+                        Log.w(TAG, "Yahoo Finance response missing 'previousClose' for $symbol. Using 0.0 as default.")
+                        previousClose = 0.0
+                    }
                     val change = currentPrice - previousClose
-                    val changePercent = (change / previousClose) * 100
-                    
-                    val open = quote.getJSONArray("open").getDouble(0)
-                    val high = quote.getJSONArray("high").getDouble(0)
-                    val low = quote.getJSONArray("low").getDouble(0)
-                    val volume = quote.getJSONArray("volume").getLong(0)
+                    val changePercent = if (previousClose != 0.0) (change / previousClose) * 100 else 0.0
+                    val open = quote.getJSONArray("open").optDouble(0, 0.0)
+                    val high = quote.getJSONArray("high").optDouble(0, 0.0)
+                    val low = quote.getJSONArray("low").optDouble(0, 0.0)
+                    val volume = quote.getJSONArray("volume").optLong(0, 0L)
                     
                     USStockData(
                         symbol = symbol.uppercase(),

@@ -41,6 +41,9 @@ import kotlinx.coroutines.DisposableHandle
 import android.widget.Toast
 import android.util.Log
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // Mock data classes
 
@@ -302,6 +305,29 @@ fun TrendingStocksList(stocks: List<USTrendingStock>) {
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)
     ) {
         items(stocks) { stock ->
+            var price by remember { mutableStateOf(stock.price) }
+            var change by remember { mutableStateOf(stock.change) }
+            var changePercent by remember { mutableStateOf(stock.changePercent) }
+            var isLoading by remember { mutableStateOf(false) }
+            val context = LocalContext.current
+            val coroutineScope = rememberCoroutineScope()
+
+            LaunchedEffect(stock.symbol) {
+                isLoading = true
+                val stockService = USStockService()
+                coroutineScope.launch {
+                    try {
+                        val stockData = stockService.getStockPrice(stock.symbol, context)
+                        if (stockData != null) {
+                            price = stockData.price
+                            change = stockData.change
+                            changePercent = stockData.changePercent
+                        }
+                    } catch (_: Exception) {}
+                    isLoading = false
+                }
+            }
+
             Card(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 shape = RoundedCornerShape(12.dp),
@@ -319,7 +345,7 @@ fun TrendingStocksList(stocks: List<USTrendingStock>) {
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            if (stock.change >= 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                            if (change >= 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
                             contentDescription = "Stock",
                             tint = Color.White,
                             modifier = Modifier.size(24.dp)
@@ -342,31 +368,18 @@ fun TrendingStocksList(stocks: List<USTrendingStock>) {
                         )
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            "$${String.format("%.2f", stock.price)}",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                if (stock.change >= 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
-                                contentDescription = if (stock.change >= 0) "Up" else "Down",
-                                tint = if (stock.change >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
-                                modifier = Modifier.size(12.dp)
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                color = Color(0xFF10B981),
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                        } else {
+                            Text("$${String.format("%.2f", price)}", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             Text(
-                                buildAnnotatedString {
-                                    withStyle(SpanStyle(color = if (stock.change >= 0) Color(0xFF10B981) else Color(0xFFEF4444))) {
-                                        append(String.format("%.2f", stock.change))
-                                    }
-                                    withStyle(SpanStyle(color = if (stock.change >= 0) Color(0xFF10B981) else Color(0xFFEF4444))) {
-                                        append(" (${String.format("%.2f", stock.changePercent)}%)")
-                                    }
-                                },
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
+                                "${String.format("%.2f", change)} (${String.format("%.2f", changePercent)}%)",
+                                color = if (changePercent >= 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                                fontSize = 14.sp
                             )
                         }
                     }

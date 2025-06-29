@@ -267,7 +267,7 @@ class PortfolioViewModel : ViewModel() {
         _error.value = null
     }
 
-    private suspend fun fetchCoinGeckoPrice(symbol: String): Double? {
+    suspend fun fetchCoinGeckoPrice(symbol: String): Double? {
         return withContext(Dispatchers.IO) {
             try {
                 // Map symbols to CoinGecko IDs
@@ -360,7 +360,7 @@ class PortfolioViewModel : ViewModel() {
         }
     }
 
-    private fun getCryptoName(symbol: String): String {
+    fun getCryptoName(symbol: String): String {
         val cryptoNames = mapOf(
             "BTC" to "Bitcoin",
             "ETH" to "Ethereum",
