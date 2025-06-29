@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.assetarc.ui.theme.AssetArcTheme
 import androidx.compose.foundation.Canvas
+import android.util.Log
+import kotlinx.coroutines.launch
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,20 +56,28 @@ class DashboardActivity : ComponentActivity() {
 fun DashboardScreen() {
     var selectedTab by remember { mutableStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
-    var showSearchResults by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
+    var showSearchResults by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(true) }
+    var marketOverview by remember { mutableStateOf<MarketOverview?>(null) }
+    var trendingAssets by remember { mutableStateOf<List<AssetData>>(emptyList()) }
+    var watchlist by remember { mutableStateOf<List<AssetData>>(emptyList()) }
+    var topGainers by remember { mutableStateOf<List<StockData>>(emptyList()) }
+    var refreshTrigger by remember { mutableStateOf(0) }
     
+    val context = LocalContext.current
     val viewModel = remember { PortfolioViewModel.getInstance() }
     val portfolio by viewModel.portfolio.collectAsState()
-    val loading by viewModel.loading.collectAsState()
+    val loadingPortfolio by viewModel.loading.collectAsState()
     val error by viewModel.error.collectAsState()
     val isRealTimeUpdatesEnabled by viewModel.isRealTimeUpdatesEnabled.collectAsState()
-    val context = LocalContext.current
     
-    // Start real-time price updates when the screen is created
+    val indianStockService = remember { IndianStockService() }
+    val usStockService = remember { USStockService() }
+
+    // Start real-time updates
     LaunchedEffect(Unit) {
-        viewModel.loadPortfolio(context) // Load portfolio from persistent storage
-        viewModel.updatePrices(context) // Initial price update
+        viewModel.loadPortfolio(context)
         viewModel.startRealTimeUpdates(context) // Start real-time updates
     }
     
@@ -76,6 +86,75 @@ fun DashboardScreen() {
         onDispose {
             viewModel.stopRealTimeUpdates()
         }
+    }
+
+    // Load real-time market data
+    LaunchedEffect(refreshTrigger) {
+        try {
+            loading = true
+            
+            // Load Indian market overview
+            marketOverview = indianStockService.getMarketOverview()
+            
+            // Load trending assets (mix of Indian stocks, US stocks, and crypto)
+            val trendingList = mutableListOf<AssetData>()
+            
+            // Add Indian stocks
+            val indianTrending = indianStockService.getTrendingStocks().take(3)
+            indianTrending.forEach { stock ->
+                trendingList.add(AssetData(
+                    symbol = stock.symbol,
+                    name = stock.name,
+                    price = stock.price,
+                    change = stock.change,
+                    changePercent = stock.changePercent,
+                    type = "indian_stock"
+                ))
+            }
+            
+            // Add US stocks
+            val usTrending = usStockService.getTrendingStocks().take(2)
+            usTrending.forEach { stock ->
+                trendingList.add(AssetData(
+                    symbol = stock.symbol,
+                    name = stock.name,
+                    price = stock.price,
+                    change = stock.change,
+                    changePercent = stock.changePercent,
+                    type = "us_stock"
+                ))
+            }
+            
+            trendingAssets = trendingList
+            
+            // Load top gainers
+            topGainers = indianStockService.getTopGainers().map { trendingStock ->
+                StockData(
+                    symbol = trendingStock.symbol,
+                    name = trendingStock.name,
+                    price = trendingStock.price,
+                    change = trendingStock.change,
+                    changePercent = trendingStock.changePercent,
+                    volume = trendingStock.volume,
+                    marketCap = 0.0,
+                    high = trendingStock.price + 10,
+                    low = trendingStock.price - 10,
+                    open = trendingStock.price - trendingStock.change,
+                    previousClose = trendingStock.price - trendingStock.change
+                )
+            }
+            
+            loading = false
+        } catch (e: Exception) {
+            Log.e("DashboardActivity", "Error loading market data", e)
+            loading = false
+        }
+    }
+
+    // Function to refresh all data
+    fun refreshAllData() {
+        viewModel.updatePrices(context)
+        refreshTrigger++ // Trigger refresh
     }
 
     // Search functionality
@@ -229,7 +308,7 @@ fun DashboardScreen() {
                         // Manual refresh button
                         IconButton(
                             onClick = {
-                                viewModel.updatePrices(context)
+                                refreshAllData()
                             },
                             modifier = Modifier.size(32.dp)
                         ) {

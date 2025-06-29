@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -162,18 +163,53 @@ fun IndianStocksScreen() {
                             )
                         }
                         
-                        IconButton(
-                            onClick = { (context as? Activity)?.finish() },
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.2f))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Default.ArrowBack,
-                                contentDescription = "Back",
-                                tint = Color.White
-                            )
+                            // Refresh button
+                            IconButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        try {
+                                            dataLoading = true
+                                            marketOverview = stockService.getMarketOverview()
+                                            topGainers = stockService.getTopGainers()
+                                            topLosers = stockService.getTopLosers()
+                                            trendingStocks = stockService.getTrendingStocks()
+                                            dataLoading = false
+                                        } catch (e: Exception) {
+                                            Log.e("IndianStocksActivity", "Error refreshing data", e)
+                                            dataLoading = false
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.2f))
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Refresh",
+                                    tint = Color.White
+                                )
+                            }
+                            
+                            // Back button
+                            IconButton(
+                                onClick = { (context as? Activity)?.finish() },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.2f))
+                            ) {
+                                Icon(
+                                    Icons.Default.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = Color.White
+                                )
+                            }
                         }
                     }
                     

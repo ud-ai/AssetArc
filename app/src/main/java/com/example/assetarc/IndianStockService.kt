@@ -153,7 +153,7 @@ class IndianStockService {
         )
     }
 
-    suspend fun getStockPrice(symbol: String, context: Context): StockData? {
+    suspend fun getStockPrice(symbol: String, context: Context?): StockData? {
         return try {
             Log.d(TAG, "Fetching price for Indian stock: $symbol")
             
@@ -352,46 +352,160 @@ class IndianStockService {
     }
 
     suspend fun getTopGainers(): List<TrendingStock> {
-        return listOf(
-            TrendingStock("TATAMOTORS", "Tata Motors Ltd", 650.50, 25.50, 4.08, 25000000),
-            TrendingStock("ASIANPAINT", "Asian Paints Ltd", 3250.25, 75.25, 2.37, 2800000),
-            TrendingStock("INFY", "Infosys Ltd", 1450.75, 35.25, 2.49, 12000000),
-            TrendingStock("HINDUNILVR", "Hindustan Unilever Ltd", 2450.00, 50.00, 2.08, 3500000),
-            TrendingStock("RELIANCE", "Reliance Industries Ltd", 2450.75, 45.25, 1.88, 12500000)
-        )
+        return try {
+            val gainers = mutableListOf<TrendingStock>()
+            
+            // Fetch real-time data for top Indian stocks
+            val topStocks = listOf("RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR", "ITC", "SBIN", "BHARTIARTL", "KOTAKBANK")
+            
+            topStocks.forEach { symbol ->
+                try {
+                    val stockData = getStockPrice(symbol, null)
+                    if (stockData != null) {
+                        gainers.add(TrendingStock(
+                            symbol = stockData.symbol,
+                            name = stockData.name,
+                            price = stockData.price,
+                            change = stockData.change,
+                            changePercent = stockData.changePercent,
+                            volume = stockData.volume
+                        ))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error fetching data for $symbol", e)
+                }
+            }
+            
+            // Sort by change percentage and return top 5
+            gainers.sortedByDescending { it.changePercent }.take(5)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching top gainers", e)
+            // Fallback to mock data
+            listOf(
+                TrendingStock("TATAMOTORS", "Tata Motors Ltd", 650.50, 25.50, 4.08, 25000000),
+                TrendingStock("ASIANPAINT", "Asian Paints Ltd", 3250.25, 75.25, 2.37, 2800000),
+                TrendingStock("INFY", "Infosys Ltd", 1450.75, 35.25, 2.49, 12000000),
+                TrendingStock("HINDUNILVR", "Hindustan Unilever Ltd", 2450.00, 50.00, 2.08, 3500000),
+                TrendingStock("RELIANCE", "Reliance Industries Ltd", 2450.75, 45.25, 1.88, 12500000)
+            )
+        }
     }
 
     suspend fun getTopLosers(): List<TrendingStock> {
-        return listOf(
-            TrendingStock("BHARTIARTL", "Bharti Airtel Ltd", 850.25, -20.75, -2.38, 12000000),
-            TrendingStock("AXISBANK", "Axis Bank Ltd", 950.50, -10.50, -1.09, 12000000),
-            TrendingStock("ICICIBANK", "ICICI Bank Ltd", 950.25, -15.75, -1.63, 15000000),
-            TrendingStock("TCS", "Tata Consultancy Services Ltd", 3850.25, -25.75, -0.66, 8500000),
-            TrendingStock("KOTAKBANK", "Kotak Mahindra Bank Ltd", 1850.75, 25.75, 1.41, 4500000)
-        )
+        return try {
+            val losers = mutableListOf<TrendingStock>()
+            
+            // Fetch real-time data for top Indian stocks
+            val topStocks = listOf("RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR", "ITC", "SBIN", "BHARTIARTL", "KOTAKBANK")
+            
+            topStocks.forEach { symbol ->
+                try {
+                    val stockData = getStockPrice(symbol, null)
+                    if (stockData != null) {
+                        losers.add(TrendingStock(
+                            symbol = stockData.symbol,
+                            name = stockData.name,
+                            price = stockData.price,
+                            change = stockData.change,
+                            changePercent = stockData.changePercent,
+                            volume = stockData.volume
+                        ))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error fetching data for $symbol", e)
+                }
+            }
+            
+            // Sort by change percentage (ascending for losers) and return top 5
+            losers.sortedBy { it.changePercent }.take(5)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching top losers", e)
+            // Fallback to mock data
+            listOf(
+                TrendingStock("BHARTIARTL", "Bharti Airtel Ltd", 850.25, -20.75, -2.38, 12000000),
+                TrendingStock("AXISBANK", "Axis Bank Ltd", 950.50, -10.50, -1.09, 12000000),
+                TrendingStock("ICICIBANK", "ICICI Bank Ltd", 950.25, -15.75, -1.63, 15000000),
+                TrendingStock("TCS", "Tata Consultancy Services Ltd", 3850.25, -25.75, -0.66, 8500000),
+                TrendingStock("KOTAKBANK", "Kotak Mahindra Bank Ltd", 1850.75, 25.75, 1.41, 4500000)
+            )
+        }
     }
 
     suspend fun getMarketOverview(): MarketOverview {
-        return MarketOverview(
-            sensex = 72500.50,
-            nifty = 21850.25,
-            sensexChange = 450.75,
-            niftyChange = 125.50,
-            sensexChangePercent = 0.63,
-            niftyChangePercent = 0.58
-        )
+        return try {
+            // Fetch real-time data for Sensex and Nifty
+            val sensexData = getStockPrice("^BSESN", null) // Sensex symbol
+            val niftyData = getStockPrice("^NSEI", null)   // Nifty symbol
+            
+            val sensex = sensexData?.price ?: 72500.50
+            val nifty = niftyData?.price ?: 21850.25
+            val sensexChange = sensexData?.change ?: 450.75
+            val niftyChange = niftyData?.change ?: 125.50
+            val sensexChangePercent = sensexData?.changePercent ?: 0.63
+            val niftyChangePercent = niftyData?.changePercent ?: 0.58
+            
+            MarketOverview(
+                sensex = sensex,
+                nifty = nifty,
+                sensexChange = sensexChange,
+                niftyChange = niftyChange,
+                sensexChangePercent = sensexChangePercent,
+                niftyChangePercent = niftyChangePercent
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching market overview", e)
+            // Fallback to mock data
+            MarketOverview(
+                sensex = 72500.50,
+                nifty = 21850.25,
+                sensexChange = 450.75,
+                niftyChange = 125.50,
+                sensexChangePercent = 0.63,
+                niftyChangePercent = 0.58
+            )
+        }
     }
 
     suspend fun getTrendingStocks(): List<TrendingStock> {
-        return listOf(
-            TrendingStock("RELIANCE", "Reliance Industries Ltd", 2450.75, 45.25, 1.88, 12500000),
-            TrendingStock("TCS", "Tata Consultancy Services Ltd", 3850.25, -25.75, -0.66, 8500000),
-            TrendingStock("HDFCBANK", "HDFC Bank Ltd", 1650.50, 12.50, 0.76, 9800000),
-            TrendingStock("INFY", "Infosys Ltd", 1450.75, 35.25, 2.49, 12000000),
-            TrendingStock("ICICIBANK", "ICICI Bank Ltd", 950.25, -15.75, -1.63, 15000000),
-            TrendingStock("HINDUNILVR", "Hindustan Unilever Ltd", 2450.00, 50.00, 2.08, 3500000),
-            TrendingStock("ITC", "ITC Ltd", 450.75, 8.25, 1.86, 25000000),
-            TrendingStock("SBIN", "State Bank of India", 650.50, 12.50, 1.96, 20000000)
-        )
+        return try {
+            val trending = mutableListOf<TrendingStock>()
+            
+            // Fetch real-time data for trending Indian stocks
+            val trendingSymbols = listOf("RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR", "ITC", "SBIN")
+            
+            trendingSymbols.forEach { symbol ->
+                try {
+                    val stockData = getStockPrice(symbol, null)
+                    if (stockData != null) {
+                        trending.add(TrendingStock(
+                            symbol = stockData.symbol,
+                            name = stockData.name,
+                            price = stockData.price,
+                            change = stockData.change,
+                            changePercent = stockData.changePercent,
+                            volume = stockData.volume
+                        ))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error fetching data for $symbol", e)
+                }
+            }
+            
+            // Return all fetched stocks
+            trending
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching trending stocks", e)
+            // Fallback to mock data
+            listOf(
+                TrendingStock("RELIANCE", "Reliance Industries Ltd", 2450.75, 45.25, 1.88, 12500000),
+                TrendingStock("TCS", "Tata Consultancy Services Ltd", 3850.25, -25.75, -0.66, 8500000),
+                TrendingStock("HDFCBANK", "HDFC Bank Ltd", 1650.50, 12.50, 0.76, 9800000),
+                TrendingStock("INFY", "Infosys Ltd", 1450.75, 35.25, 2.49, 12000000),
+                TrendingStock("ICICIBANK", "ICICI Bank Ltd", 950.25, -15.75, -1.63, 15000000),
+                TrendingStock("HINDUNILVR", "Hindustan Unilever Ltd", 2450.00, 50.00, 2.08, 3500000),
+                TrendingStock("ITC", "ITC Ltd", 450.75, 8.25, 1.86, 25000000),
+                TrendingStock("SBIN", "State Bank of India", 650.50, 12.50, 1.96, 20000000)
+            )
+        }
     }
 } 

@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,6 +40,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import android.widget.Toast
+import kotlinx.coroutines.launch
+import android.util.Log
 
 // Mock data classes
 
@@ -67,6 +71,7 @@ fun CryptoScreen() {
     var topGainers by remember { mutableStateOf<List<CryptoTrending>>(emptyList()) }
     var topLosers by remember { mutableStateOf<List<CryptoTrending>>(emptyList()) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableStateOf(0) }
     
     val context = LocalContext.current
     val portfolioViewModel = remember { PortfolioViewModel.getInstance() }
@@ -103,14 +108,6 @@ fun CryptoScreen() {
         CryptoTrending("DOT", "Polkadot", 7.2, 0.3, 4.35)
     ) }
 
-    // Load mock data
-    LaunchedEffect(Unit) {
-        trending = trendingCryptos
-        topGainers = topGainersList
-        topLosers = topLosersList
-        loading = false
-    }
-
     // Start real-time price updates
     LaunchedEffect(Unit) {
         portfolioViewModel.loadPortfolio(context)
@@ -122,6 +119,14 @@ fun CryptoScreen() {
         onDispose {
             portfolioViewModel.stopRealTimeUpdates()
         }
+    }
+
+    // Load mock data
+    LaunchedEffect(refreshTrigger) {
+        trending = getCryptoTrending()
+        topGainers = getCryptoTopGainers()
+        topLosers = getCryptoTopLosers()
+        loading = false
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0E21))) {
@@ -175,18 +180,42 @@ fun CryptoScreen() {
                                 fontSize = 14.sp
                             )
                         }
-                        IconButton(
-                            onClick = { (context as? ComponentActivity)?.finish() },
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.2f))
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Default.ArrowBack,
-                                contentDescription = "Back",
-                                tint = Color.White
-                            )
+                            // Refresh button
+                            IconButton(
+                                onClick = {
+                                    refreshTrigger++ // Trigger refresh
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.2f))
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Refresh",
+                                    tint = Color.White
+                                )
+                            }
+                            
+                            // Back button
+                            IconButton(
+                                onClick = { (context as? ComponentActivity)?.finish() },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.2f))
+                            ) {
+                                Icon(
+                                    Icons.Default.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = Color.White
+                                )
+                            }
                         }
                     }
                 }
@@ -414,5 +443,38 @@ fun AddCryptoDialog(trending: List<CryptoTrending>, onAdd: (String, Double) -> U
         containerColor = Color(0xFF1F2937),
         titleContentColor = Color.White,
         textContentColor = Color.White
+    )
+}
+
+// Crypto data functions
+fun getCryptoTrending(): List<CryptoTrending> {
+    return listOf(
+        CryptoTrending("BTC", "Bitcoin", 45000.0, 500.0, 1.12),
+        CryptoTrending("ETH", "Ethereum", 3000.0, -50.0, -1.64),
+        CryptoTrending("BNB", "Binance Coin", 400.0, 10.0, 2.56),
+        CryptoTrending("ADA", "Cardano", 0.5, 0.01, 2.04),
+        CryptoTrending("SOL", "Solana", 100.0, 5.0, 5.26),
+        CryptoTrending("XRP", "Ripple", 0.8, 0.02, 2.56),
+        CryptoTrending("DOT", "Polkadot", 7.2, 0.3, 4.35)
+    )
+}
+
+fun getCryptoTopGainers(): List<CryptoTrending> {
+    return listOf(
+        CryptoTrending("SOL", "Solana", 100.0, 5.0, 5.26),
+        CryptoTrending("DOT", "Polkadot", 7.2, 0.3, 4.35),
+        CryptoTrending("BNB", "Binance Coin", 400.0, 10.0, 2.56),
+        CryptoTrending("ADA", "Cardano", 0.5, 0.01, 2.04),
+        CryptoTrending("BTC", "Bitcoin", 45000.0, 500.0, 1.12)
+    )
+}
+
+fun getCryptoTopLosers(): List<CryptoTrending> {
+    return listOf(
+        CryptoTrending("ETH", "Ethereum", 3000.0, -50.0, -1.64),
+        CryptoTrending("XRP", "Ripple", 0.8, 0.02, 2.56),
+        CryptoTrending("BTC", "Bitcoin", 45000.0, 500.0, 1.12),
+        CryptoTrending("BNB", "Binance Coin", 400.0, 10.0, 2.56),
+        CryptoTrending("ADA", "Cardano", 0.5, 0.01, 2.04)
     )
 } 

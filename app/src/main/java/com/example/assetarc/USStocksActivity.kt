@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,10 +39,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.DisposableHandle
 import android.widget.Toast
+import android.util.Log
+import kotlinx.coroutines.launch
 
 // Mock data classes
 
-data class USTrendingStock(val symbol: String, val name: String, val price: Double, val change: Double, val changePercent: Double)
+// USTrendingStock is now defined in USStockService.kt
 
 class USStocksActivity : ComponentActivity() {
     private val portfolioViewModel: PortfolioViewModel by viewModels()
@@ -67,12 +70,15 @@ fun USStocksScreen() {
     var topGainers by remember { mutableStateOf<List<USTrendingStock>>(emptyList()) }
     var topLosers by remember { mutableStateOf<List<USTrendingStock>>(emptyList()) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableStateOf(0) }
     
     val context = LocalContext.current
     val portfolioViewModel = remember { PortfolioViewModel.getInstance() }
     val portfolio by portfolioViewModel.portfolio.collectAsState()
     val loadingPortfolio by portfolioViewModel.loading.collectAsState()
     val error by portfolioViewModel.error.collectAsState()
+    
+    val stockService = remember { USStockService() }
 
     // Start real-time price updates
     LaunchedEffect(Unit) {
@@ -87,41 +93,17 @@ fun USStocksScreen() {
         }
     }
 
-    val trendingStocks = remember { listOf(
-        USTrendingStock("AAPL", "Apple Inc.", 180.0, 2.5, 1.4),
-        USTrendingStock("GOOGL", "Alphabet Inc.", 140.0, -1.2, -0.85),
-        USTrendingStock("MSFT", "Microsoft Corp.", 350.0, 5.8, 1.68),
-        USTrendingStock("AMZN", "Amazon.com Inc.", 130.0, 3.2, 2.52),
-        USTrendingStock("TSLA", "Tesla Inc.", 240.0, -8.5, -3.42),
-        USTrendingStock("META", "Meta Platforms Inc.", 320.0, 12.5, 4.06),
-        USTrendingStock("NFLX", "Netflix Inc.", 450.0, 15.2, 3.49),
-        USTrendingStock("NVDA", "NVIDIA Corp.", 480.0, 25.8, 5.68),
-        USTrendingStock("AMD", "Advanced Micro Devices Inc.", 120.0, 4.2, 3.62),
-        USTrendingStock("INTC", "Intel Corp.", 45.0, -1.8, -3.85)
-    ) }
-
-    val topGainersList = remember { listOf(
-        USTrendingStock("NVDA", "NVIDIA Corp.", 480.0, 25.8, 5.68),
-        USTrendingStock("META", "Meta Platforms Inc.", 320.0, 12.5, 4.06),
-        USTrendingStock("NFLX", "Netflix Inc.", 450.0, 15.2, 3.49),
-        USTrendingStock("AMD", "Advanced Micro Devices Inc.", 120.0, 4.2, 3.62),
-        USTrendingStock("MSFT", "Microsoft Corp.", 350.0, 5.8, 1.68)
-    ) }
-
-    val topLosersList = remember { listOf(
-        USTrendingStock("TSLA", "Tesla Inc.", 240.0, -8.5, -3.42),
-        USTrendingStock("INTC", "Intel Corp.", 45.0, -1.8, -3.85),
-        USTrendingStock("GOOGL", "Alphabet Inc.", 140.0, -1.2, -0.85),
-        USTrendingStock("AAPL", "Apple Inc.", 180.0, 2.5, 1.4),
-        USTrendingStock("AMZN", "Amazon.com Inc.", 130.0, 3.2, 2.52)
-    ) }
-
-    // Load mock data
-    LaunchedEffect(Unit) {
-        trending = trendingStocks
-        topGainers = topGainersList
-        topLosers = topLosersList
-        loading = false
+    // Load real-time data
+    LaunchedEffect(refreshTrigger) {
+        try {
+            trending = stockService.getTrendingStocks()
+            topGainers = stockService.getTopGainers()
+            topLosers = stockService.getTopLosers()
+            loading = false
+        } catch (e: Exception) {
+            Log.e("USStocksActivity", "Error loading data", e)
+            loading = false
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0E21))) {
@@ -159,18 +141,42 @@ fun USStocksScreen() {
                                 fontSize = 14.sp
                             )
                         }
-                        IconButton(
-                            onClick = { (context as? ComponentActivity)?.finish() },
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.2f))
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Default.ArrowBack,
-                                contentDescription = "Back",
-                                tint = Color.White
-                            )
+                            // Refresh button
+                            IconButton(
+                                onClick = {
+                                    refreshTrigger++ // Trigger refresh
+                                },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.2f))
+                            ) {
+                                Icon(
+                                    Icons.Default.Refresh,
+                                    contentDescription = "Refresh",
+                                    tint = Color.White
+                                )
+                            }
+                            
+                            // Back button
+                            IconButton(
+                                onClick = { (context as? ComponentActivity)?.finish() },
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.2f))
+                            ) {
+                                Icon(
+                                    Icons.Default.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = Color.White
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(24.dp))
