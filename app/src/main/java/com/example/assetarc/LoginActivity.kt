@@ -52,6 +52,11 @@ import kotlin.math.hypot
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.window.Dialog
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColor
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.launch
 
 class LoginActivity : ComponentActivity() {
     private lateinit var auth: FirebaseAuth
@@ -68,6 +73,8 @@ class LoginActivity : ComponentActivity() {
         googleSignInClient = GoogleSignIn.getClient(this, gso)
         setContent {
             var darkMode by remember { mutableStateOf(false) }
+            var loading by remember { mutableStateOf(false) }
+            var errorMessage by remember { mutableStateOf<String?>(null) }
             AssetArcTheme(darkTheme = darkMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -76,16 +83,16 @@ class LoginActivity : ComponentActivity() {
                     AuthScreen(
                         onGoogleAuth = { signInWithGoogle() },
                         onPhoneAuth = { isSignUp, phone ->
-                            // Use Firebase phone auth flow
                             val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
                                 override fun onVerificationCompleted(credential: PhoneAuthCredential) {
                                     signInWithPhoneCredential(credential)
                                 }
                                 override fun onVerificationFailed(e: FirebaseException) {
-                                    Toast.makeText(this@LoginActivity, "Phone auth failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                    loading = false
+                                    errorMessage = "Phone auth failed: ${e.localizedMessage ?: e.message}"
                                 }
                                 override fun onCodeSent(verificationId: String, token: PhoneAuthProvider.ForceResendingToken) {
-                                    // Show dialog to enter OTP
+                                    loading = false
                                     val otpInput = EditText(this@LoginActivity)
                                     otpInput.hint = "Enter OTP"
                                     AlertDialog.Builder(this@LoginActivity)
@@ -107,7 +114,11 @@ class LoginActivity : ComponentActivity() {
                             if (isSignUp) signUpWithEmail(email, password) else signInWithEmail(email, password)
                         },
                         darkMode = darkMode,
-                        onToggleDarkMode = { darkMode = !darkMode }
+                        onToggleDarkMode = { darkMode = !darkMode },
+                        loading = loading,
+                        setLoading = { loading = it },
+                        errorMessage = errorMessage,
+                        setErrorMessage = { errorMessage = it }
                     )
                 }
             }
@@ -149,6 +160,7 @@ class LoginActivity : ComponentActivity() {
 
     // Add these functions to handle email and phone auth, launching DashboardActivity on success
     private fun signInWithEmail(email: String, password: String) {
+        // Show loading indicator (handled in composable)
         auth.signInWithEmailAndPassword(email, password)
             .addOnCompleteListener(this) { task ->
                 if (task.isSuccessful) {
@@ -156,7 +168,12 @@ class LoginActivity : ComponentActivity() {
                     startActivity(Intent(this, DashboardActivity::class.java))
                     finish()
                 } else {
-                    Toast.makeText(this, "Email sign in failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                    val message = when (val ex = task.exception) {
+                        is FirebaseAuthInvalidUserException -> "No user found with this email."
+                        is FirebaseAuthInvalidCredentialsException -> "Invalid email or password."
+                        else -> ex?.localizedMessage ?: "Sign in failed."
+                    }
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                 }
             }
     }
@@ -168,7 +185,13 @@ class LoginActivity : ComponentActivity() {
                     startActivity(Intent(this, DashboardActivity::class.java))
                     finish()
                 } else {
-                    Toast.makeText(this, "Email sign up failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                    val message = when (val ex = task.exception) {
+                        is FirebaseAuthUserCollisionException -> "Email already in use."
+                        is FirebaseAuthWeakPasswordException -> "Password is too weak."
+                        is FirebaseAuthInvalidCredentialsException -> "Invalid email format."
+                        else -> ex?.localizedMessage ?: "Sign up failed."
+                    }
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                 }
             }
     }
@@ -180,7 +203,8 @@ class LoginActivity : ComponentActivity() {
                     startActivity(Intent(this, DashboardActivity::class.java))
                     finish()
                 } else {
-                    Toast.makeText(this, "Phone sign in failed: ${task.exception?.message}", Toast.LENGTH_LONG).show()
+                    val message = task.exception?.localizedMessage ?: "Phone sign in failed."
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                 }
             }
     }
@@ -192,10 +216,13 @@ fun AuthScreen(
     onPhoneAuth: (Boolean, String) -> Unit,
     onEmailAuth: (Boolean, String, String) -> Unit,
     darkMode: Boolean,
-    onToggleDarkMode: () -> Unit
+    onToggleDarkMode: () -> Unit,
+    loading: Boolean,
+    setLoading: (Boolean) -> Unit,
+    errorMessage: String?,
+    setErrorMessage: (String?) -> Unit
 ) {
     var isSignUp by remember { mutableStateOf(false) }
-    var loading by remember { mutableStateOf(false) }
     var showPhoneDialog by remember { mutableStateOf(false) }
     var phoneInput by remember { mutableStateOf("") }
     var showEmailDialog by remember { mutableStateOf(false) }
@@ -203,18 +230,29 @@ fun AuthScreen(
     var passwordInput by remember { mutableStateOf("") }
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    // Telegram-inspired colors
-    val telegramDarkBg = Color(0xFF17212B)
-    val telegramDarkCard = Color(0xFF232E3C)
-    val telegramAccent = Color(0xFF3390EC)
-    val telegramTextPrimary = Color.White
-    val telegramTextSecondary = Color(0xFFAEBACB)
-    val telegramDivider = Color(0xFF232E3C)
-    val telegramLightBg = Color(0xFFe0eafc)
-    val telegramLightCard = Color.White
-    val telegramLightText = Color(0xFF232526)
+    // Minimal color palette
+    val accentColor = Color(0xFF3B82F6) // Soft blue
+    val backgroundColor = Color(0xFFF6F8FA) // Light gray
+    val cardColor = Color.White
+    val textPrimary = Color(0xFF1A1A1A)
+    val textSecondary = Color(0xFF6B7280)
+    val dividerColor = Color(0xFFE5E7EB)
+    val buttonColor = accentColor
+    val buttonTextColor = Color.White
+    val fieldBg = Color(0xFFF3F4F6)
+    val fieldBorder = Color(0xFFD1D5DB)
 
-    // For radial reveal animation
+    // Animated card
+    val cardAnim = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        cardAnim.animateTo(1f, animationSpec = tween(700, delayMillis = 200, easing = FastOutSlowInEasing))
+    }
+    // Button scale animation
+    val coroutineScope = rememberCoroutineScope()
+    val googleBtnScale = remember { Animatable(1f) }
+    val emailBtnScale = remember { Animatable(1f) }
+    val phoneBtnScale = remember { Animatable(1f) }
+    // For radial reveal animation (dark mode)
     var togglePos by remember { mutableStateOf(Offset.Zero) }
     var reveal by remember { mutableStateOf(false) }
     var revealCenter by remember { mutableStateOf(Offset.Zero) }
@@ -230,20 +268,9 @@ fun AuthScreen(
             reveal = false
         }
     }
-    val backgroundBrush = if (animProgress > 0f && animProgress < 1f) {
-        val fromColor = if (!darkMode) telegramDarkBg else telegramLightBg
-        val toColor = if (darkMode) telegramDarkBg else telegramLightBg
-        Brush.radialGradient(
-            colors = listOf(lerp(fromColor, toColor, animProgress), Color.Transparent),
-            center = revealCenter,
-            radius = revealRadius * animProgress
-        )
-    } else {
-        Brush.verticalGradient(
-            colors = if (darkMode) listOf(telegramDarkBg, telegramDarkCard)
-            else listOf(telegramLightBg, telegramLightCard)
-        )
-    }
+    val backgroundBrush = Brush.verticalGradient(
+        colors = listOf(backgroundColor, Color.White)
+    )
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -255,10 +282,20 @@ fun AuthScreen(
                 )
             }
     ) {
+        // App name at the top
+        Text(
+            text = "AssetArc",
+            fontSize = 32.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = accentColor,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 48.dp)
+        )
+        // Dark mode toggle (kept for UI, but always minimal)
         IconButton(
             onClick = {
                 revealCenter = togglePos
-                // Calculate the farthest distance from the toggle to a corner
                 val distances = listOf(
                     revealCenter.getDistance(Offset(0f, 0f)),
                     revealCenter.getDistance(Offset(boxSize.width, 0f)),
@@ -282,230 +319,264 @@ fun AuthScreen(
             Icon(
                 imageVector = if (darkMode) Icons.Filled.Brightness7 else Icons.Filled.Brightness4,
                 contentDescription = "Toggle dark mode",
-                tint = telegramAccent
+                tint = accentColor
             )
         }
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+        // Animated card
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 120.dp, bottom = 32.dp)
         ) {
-            // SVG logo removed, native UI only
-            Crossfade(targetState = loading, label = "auth_loading") { isLoading ->
-                if (isLoading) {
-                    CircularProgressIndicator(color = telegramAccent)
-                } else {
-                    Card(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .fillMaxWidth(0.95f)
-                            .wrapContentHeight()
-                            .verticalScroll(scrollState),
-                        elevation = CardDefaults.cardElevation(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (darkMode) telegramDarkCard else telegramLightCard
-                        )
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(16.dp)
+            Card(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .graphicsLayer(
+                        alpha = cardAnim.value,
+                        translationY = (1f - cardAnim.value) * 60f
+                    )
+                    .padding(horizontal = 16.dp)
+                    .clip(RoundedCornerShape(32.dp))
+                    .fillMaxWidth(0.97f)
+                    .wrapContentHeight()
+                    .verticalScroll(scrollState),
+                elevation = CardDefaults.cardElevation(32.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White.copy(alpha = 0.95f)
+                )
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(36.dp)
+                ) {
+                    Text(
+                        text = if (isSignUp) "Create Account" else "Welcome Back!",
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = accentColor
+                    )
+                    Spacer(modifier = Modifier.height(32.dp))
+                    if (loading) {
+                        CircularProgressIndicator(color = accentColor)
+                    } else {
+                        errorMessage?.let {
+                            Text(it, color = Color.Red, fontSize = 14.sp, modifier = Modifier.padding(bottom = 8.dp))
+                        }
+                        // Google Auth Button
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    googleBtnScale.animateTo(0.92f, animationSpec = tween(60, easing = FastOutSlowInEasing))
+                                    googleBtnScale.animateTo(1f, animationSpec = tween(120, easing = FastOutSlowInEasing))
+                                }
+                                onGoogleAuth()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = buttonColor),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .graphicsLayer(scaleX = googleBtnScale.value, scaleY = googleBtnScale.value)
                         ) {
+                            Text("Sign in with Google", color = buttonTextColor, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        // Email Auth Button
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    emailBtnScale.animateTo(0.92f, animationSpec = tween(60, easing = FastOutSlowInEasing))
+                                    emailBtnScale.animateTo(1f, animationSpec = tween(120, easing = FastOutSlowInEasing))
+                                }
+                                showEmailDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = buttonColor),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .graphicsLayer(scaleX = emailBtnScale.value, scaleY = emailBtnScale.value)
+                        ) {
+                            Icon(Icons.Default.Email, contentDescription = null, tint = buttonTextColor)
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Welcome Back!",
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (darkMode) telegramTextPrimary else telegramLightText
+                                if (isSignUp) "Sign up with Email" else "Sign in with Email",
+                                color = buttonTextColor,
+                                fontWeight = FontWeight.Bold
                             )
-                            Spacer(modifier = Modifier.height(32.dp))
-                            GoogleAuthButton(onClick = onGoogleAuth, accentColor = telegramAccent)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = { showEmailDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = telegramAccent.copy(red = 0.7f)),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(50.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                            ) {
-                                Icon(Icons.Default.Email, contentDescription = null, tint = Color.White)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    if (isSignUp) "Sign up with Email" else "Sign in with Email",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
-                            PhoneAuthButton(isSignUp = isSignUp, onClick = { showPhoneDialog = true }, accentColor = telegramAccent)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            AppleAuthButton(accentColor = telegramAccent)
-                            Spacer(modifier = Modifier.height(32.dp))
-                            Divider(color = telegramDivider.copy(alpha = 0.2f))
-                            TextButton(onClick = { isSignUp = !isSignUp }) {
-                                Text(
-                                    if (isSignUp) "Already have an account? Log In" else "Don't have an account? Sign Up",
-                                    color = telegramAccent
-                                )
-                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        // Phone Auth Button
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    phoneBtnScale.animateTo(0.92f, animationSpec = tween(60, easing = FastOutSlowInEasing))
+                                    phoneBtnScale.animateTo(1f, animationSpec = tween(120, easing = FastOutSlowInEasing))
+                                }
+                                showPhoneDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = buttonColor),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .graphicsLayer(scaleX = phoneBtnScale.value, scaleY = phoneBtnScale.value)
+                        ) {
+                            Icon(Icons.Default.Phone, contentDescription = null, tint = buttonTextColor)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                if (isSignUp) "Sign up with Phone" else "Sign in with Phone",
+                                color = buttonTextColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(32.dp))
+                        Divider(color = dividerColor.copy(alpha = 0.7f))
+                        TextButton(onClick = { isSignUp = !isSignUp }) {
+                            Text(
+                                if (isSignUp) "Already have an account? Log In" else "Don't have an account? Sign Up",
+                                color = accentColor,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
             }
         }
-        // Modern Compose-based phone input dialog
+        // Phone and Email dialogs remain unchanged, but use minimal theme
         if (showPhoneDialog) {
             Dialog(onDismissRequest = { showPhoneDialog = false }) {
                 Card(
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (darkMode) telegramDarkCard else telegramLightCard
-                    ),
-                    modifier = Modifier
-                        .padding(24.dp)
-                        .fillMaxWidth(0.95f)
+                    elevation = CardDefaults.cardElevation(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
                 ) {
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        IconButton(
-                            onClick = { showPhoneDialog = false },
-                            modifier = Modifier.align(Alignment.TopEnd)
-                        ) {
-                            Icon(Icons.Default.Brightness7, contentDescription = "Close", tint = telegramAccent)
-                        }
-                    }
                     Column(
-                        modifier = Modifier.padding(24.dp),
+                        modifier = Modifier.padding(28.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
                             text = if (isSignUp) "Sign up with Phone" else "Sign in with Phone",
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp,
-                            color = if (darkMode) telegramTextPrimary else telegramLightText
+                            color = accentColor
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         OutlinedTextField(
                             value = phoneInput,
                             onValueChange = { phoneInput = it },
-                            label = { Text("Phone Number") },
-                            placeholder = { Text("+1234567890") },
+                            label = { Text("Phone Number", color = textSecondary) },
+                            placeholder = { Text("Enter phone number", color = textSecondary) },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = telegramAccent,
-                                unfocusedBorderColor = telegramDivider,
-                                cursorColor = telegramAccent,
-                                focusedLabelColor = telegramAccent,
-                                unfocusedLabelColor = telegramTextSecondary,
-                                focusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText,
-                                unfocusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText
+                                focusedBorderColor = accentColor,
+                                unfocusedBorderColor = fieldBorder,
+                                cursorColor = accentColor,
+                                focusedLabelColor = accentColor,
+                                unfocusedLabelColor = textSecondary,
+                                focusedTextColor = textPrimary,
+                                unfocusedTextColor = textPrimary
                             ),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().background(fieldBg)
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
                             onClick = {
-                                if (phoneInput.isNotEmpty()) {
+                                val digits = phoneInput.filter { it.isDigit() }
+                                if (digits.length == 10) {
+                                    setLoading(true)
+                                    setErrorMessage(null)
                                     showPhoneDialog = false
-                                    onPhoneAuth(isSignUp, phoneInput)
+                                    val formattedPhone = if (digits.startsWith("+")) digits else "+91$digits"
+                                    onPhoneAuth(isSignUp, formattedPhone)
                                 } else {
-                                    Toast.makeText(context, "Invalid phone number", Toast.LENGTH_SHORT).show()
+                                    setErrorMessage("Enter a valid 10-digit phone number.")
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = telegramAccent),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Send OTP", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("Send OTP", color = buttonTextColor, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
         }
-        // Modern Compose-based email input dialog
         if (showEmailDialog) {
             Dialog(onDismissRequest = { showEmailDialog = false }) {
                 Card(
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (darkMode) telegramDarkCard else telegramLightCard
-                    ),
-                    modifier = Modifier
-                        .padding(24.dp)
-                        .fillMaxWidth(0.95f)
+                    elevation = CardDefaults.cardElevation(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
                 ) {
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        IconButton(
-                            onClick = { showEmailDialog = false },
-                            modifier = Modifier.align(Alignment.TopEnd)
-                        ) {
-                            Icon(Icons.Default.Brightness7, contentDescription = "Close", tint = telegramAccent)
-                        }
-                    }
                     Column(
-                        modifier = Modifier.padding(24.dp),
+                        modifier = Modifier.padding(28.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
                             text = if (isSignUp) "Sign up with Email" else "Sign in with Email",
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp,
-                            color = if (darkMode) telegramTextPrimary else telegramLightText
+                            color = accentColor
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         OutlinedTextField(
                             value = emailInput,
                             onValueChange = { emailInput = it },
-                            label = { Text("Email") },
-                            placeholder = { Text("example@email.com") },
+                            label = { Text("Email", color = textSecondary) },
+                            placeholder = { Text("example@email.com", color = textSecondary) },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = telegramAccent,
-                                unfocusedBorderColor = telegramDivider,
-                                cursorColor = telegramAccent,
-                                focusedLabelColor = telegramAccent,
-                                unfocusedLabelColor = telegramTextSecondary,
-                                focusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText,
-                                unfocusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText
+                                focusedBorderColor = accentColor,
+                                unfocusedBorderColor = fieldBorder,
+                                cursorColor = accentColor,
+                                focusedLabelColor = accentColor,
+                                unfocusedLabelColor = textSecondary,
+                                focusedTextColor = textPrimary,
+                                unfocusedTextColor = textPrimary
                             ),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().background(fieldBg)
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         OutlinedTextField(
                             value = passwordInput,
                             onValueChange = { passwordInput = it },
-                            label = { Text("Password") },
-                            placeholder = { Text("Password") },
+                            label = { Text("Password", color = textSecondary) },
+                            placeholder = { Text("Password", color = textSecondary) },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = telegramAccent,
-                                unfocusedBorderColor = telegramDivider,
-                                cursorColor = telegramAccent,
-                                focusedLabelColor = telegramAccent,
-                                unfocusedLabelColor = telegramTextSecondary,
-                                focusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText,
-                                unfocusedTextColor = if (darkMode) telegramTextPrimary else telegramLightText
+                                focusedBorderColor = accentColor,
+                                unfocusedBorderColor = fieldBorder,
+                                cursorColor = accentColor,
+                                focusedLabelColor = accentColor,
+                                unfocusedLabelColor = textSecondary,
+                                focusedTextColor = textPrimary,
+                                unfocusedTextColor = textPrimary
                             ),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().background(fieldBg)
                         )
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
                             onClick = {
-                                if (emailInput.isNotEmpty() && passwordInput.isNotEmpty()) {
+                                if (emailInput.isNotEmpty() && passwordInput.isNotEmpty() && Patterns.EMAIL_ADDRESS.matcher(emailInput).matches()) {
+                                    setLoading(true)
+                                    setErrorMessage(null)
                                     showEmailDialog = false
                                     onEmailAuth(isSignUp, emailInput, passwordInput)
                                 } else {
-                                    Toast.makeText(context, "Invalid email or password", Toast.LENGTH_SHORT).show()
+                                    setErrorMessage("Invalid email or password.")
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = telegramAccent),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text(if (isSignUp) "Sign Up" else "Sign In", color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(if (isSignUp) "Sign Up" else "Sign In", color = buttonTextColor, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
