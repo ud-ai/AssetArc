@@ -48,6 +48,9 @@ data class TrendingStock(
 
 class IndianStockService {
     
+    // In-memory cache for historical prices: key = "symbol-days"
+    private val historicalCache = mutableMapOf<String, List<Pair<Long, Double>>>()
+    
     companion object {
         private const val TAG = "IndianStockService"
         private const val YAHOO_FINANCE_BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart/"
@@ -429,5 +432,38 @@ class IndianStockService {
             Log.e(TAG, "Error fetching trending stocks", e)
             emptyList()
         }
+    }
+
+    // Fetch historical daily close prices for the last [days] days
+    suspend fun getHistoricalPrices(symbol: String, days: Int): List<Pair<Long, Double>> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<Pair<Long, Double>>()
+        try {
+            val fullSymbol = if (!symbol.endsWith(".NS")) "$symbol.NS" else symbol
+            val url = URL("https://query1.finance.yahoo.com/v8/finance/chart/$fullSymbol?interval=1d&range=${days}d")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+            val responseCode = connection.responseCode
+            if (responseCode == 200) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(response)
+                val chart = json.getJSONObject("chart")
+                val chartResult = chart.getJSONArray("result").getJSONObject(0)
+                val timestamps = chartResult.getJSONArray("timestamp")
+                val closePrices = chartResult.getJSONObject("indicators").getJSONArray("quote").getJSONObject(0).getJSONArray("close")
+                for (i in 0 until timestamps.length()) {
+                    val ts = timestamps.getLong(i)
+                    val price = closePrices.optDouble(i, Double.NaN)
+                    if (!price.isNaN()) {
+                        result.add(ts to price)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching historical prices for $symbol", e)
+        }
+        result
     }
 } 
