@@ -42,6 +42,7 @@ import android.util.Log
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Chat
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -502,33 +503,6 @@ fun DashboardScreen() {
             }
         }
         
-        if (loading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(color = Color(0xFF3B82F6))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "Loading...",
-                            color = Color.White,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-        }
-        
         error?.let { errorMessage ->
             Snackbar(
                 modifier = Modifier.padding(16.dp),
@@ -550,7 +524,7 @@ fun DashboardScreen() {
             containerColor = Color(0xFF3B82F6)
         ) {
             Icon(
-                imageVector = Icons.Default.Add,
+                imageVector = Icons.Outlined.Chat,
                 contentDescription = "Open Chat Assistant",
                 tint = Color.White
             )
