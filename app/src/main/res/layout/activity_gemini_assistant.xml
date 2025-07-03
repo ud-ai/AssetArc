@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Portfolio Insights Section -->
+    <TextView
+        android:id="@+id/tvPortfolioInsightsTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Portfolio Insights"
+        android:textStyle="bold"
+        android:textSize="18sp"
+        android:paddingBottom="8dp"/>
+    <com.facebook.shimmer.ShimmerFrameLayout
+        android:id="@+id/shimmerPortfolio"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:shimmer_auto_start="true">
+        <TextView
+            android:id="@+id/tvPortfolioInsights"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Loading insights..."
+            android:paddingBottom="16dp"/>
+    </com.facebook.shimmer.ShimmerFrameLayout>
+
+    <!-- News Summarization Section -->
+    <TextView
+        android:id="@+id/tvNewsSummaryTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="News Summaries"
+        android:textStyle="bold"
+        android:textSize="18sp"
+        android:paddingBottom="8dp"/>
+    <com.facebook.shimmer.ShimmerFrameLayout
+        android:id="@+id/shimmerNews"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:shimmer_auto_start="true">
+        <TextView
+            android:id="@+id/tvNewsSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Loading news..."
+            android:paddingBottom="16dp"/>
+    </com.facebook.shimmer.ShimmerFrameLayout>
+
+    <!-- Chat Section -->
+    <TextView
+        android:id="@+id/tvChatTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Gemini Assistant Chat"
+        android:textStyle="bold"
+        android:textSize="18sp"
+        android:paddingBottom="8dp"/>
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvChatMessages"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#F0F4F8"
+        android:padding="8dp"/>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="8dp">
+        <EditText
+            android:id="@+id/etChatInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Ask Gemini..."/>
+        <Button
+            android:id="@+id/btnSend"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Send"/>
+    </LinearLayout>
+</LinearLayout> 

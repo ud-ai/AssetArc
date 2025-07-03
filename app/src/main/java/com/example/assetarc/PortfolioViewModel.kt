@@ -474,4 +474,12 @@ class PortfolioViewModel : ViewModel() {
         
         return isIndianMarketOpen || isUSMarketOpen || isCryptoMarketOpen
     }
+
+    // Returns a summary string of the current portfolio for Gemini prompts
+    fun getSummaryString(): String {
+        return _portfolio.value.joinToString(", ") {
+            "${it.name} (${it.symbol}): ${it.quantity} units at ₹${it.price} (" +
+            (if (it.changePercent >= 0) "+" else "") + "${"%.2f".format(it.changePercent)}%)"
+        }
+    }
 } 

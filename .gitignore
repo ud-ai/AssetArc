@@ -1,6 +1,7 @@
 *.iml
 .gradle
-/local.properties
+# Ignore local.properties for API key safety
+local.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml

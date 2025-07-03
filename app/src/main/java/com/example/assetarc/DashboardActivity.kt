@@ -41,6 +41,7 @@ import androidx.compose.foundation.Canvas
 import android.util.Log
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import androidx.compose.material.icons.filled.Add
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -467,7 +468,13 @@ fun DashboardScreen() {
                     val isSelected = selectedTab == index
                     Card(
                         modifier = Modifier
-                            .clickable { selectedTab = index },
+                            .clickable {
+                                try {
+                                    selectedTab = index
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            },
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isSelected) Color(0xFF3B82F6) else Color(0xFF1F2937)
@@ -530,6 +537,23 @@ fun DashboardScreen() {
             ) {
                 Text(errorMessage)
             }
+        }
+
+        // Floating Action Button for Chat Assistant
+        FloatingActionButton(
+            onClick = {
+                context.startActivity(Intent(context, GeminiAssistantActivity::class.java))
+            },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(24.dp),
+            containerColor = Color(0xFF3B82F6)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Open Chat Assistant",
+                tint = Color.White
+            )
         }
     }
 }
@@ -792,7 +816,13 @@ fun StockListItem(stock: StockData, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clickable { onClick() },
+            .clickable {
+                try {
+                    onClick()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF374151))
     ) {
@@ -877,7 +907,13 @@ fun AssetListItem(asset: AssetData, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clickable { onClick() },
+            .clickable {
+                try {
+                    onClick()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF374151))
     ) {
@@ -978,7 +1014,13 @@ fun PortfolioItemCard(item: PortfolioItem, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clickable { onClick() },
+            .clickable {
+                try {
+                    onClick()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF374151))
     ) {
@@ -1248,7 +1290,13 @@ fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .clickable {
+                try {
+                    onClick()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
             .padding(12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically

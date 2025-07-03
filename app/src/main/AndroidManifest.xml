@@ -56,6 +56,10 @@
             android:name=".AssetDetailActivity"
             android:exported="false"
             android:theme="@style/Theme.AssetArc" />
+        <activity
+            android:name=".GeminiAssistantActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AssetArc" />
     </application>
 
 </manifest>
