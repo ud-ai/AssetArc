@@ -38,21 +38,31 @@ class ChatAdapter(private val messages: List<ChatMessage>) : RecyclerView.Adapte
 
     override fun getItemCount(): Int = messages.size
 
+    override fun onViewAttachedToWindow(holder: RecyclerView.ViewHolder) {
+        super.onViewAttachedToWindow(holder)
+        holder.itemView.alpha = 0f
+        holder.itemView.animate().alpha(1f).setDuration(250).start()
+    }
+
     class UserViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvMessage: TextView = itemView.findViewById(R.id.tvUserMessage)
         private val ivAvatar: ImageView = itemView.findViewById(R.id.ivUserAvatar)
+        private val tvTimestamp: TextView = itemView.findViewById(R.id.tvUserTimestamp)
         fun bind(message: ChatMessage) {
             tvMessage.text = message.text
-            // Optionally set avatar image here
+            tvTimestamp.text = android.text.format.DateFormat.format("hh:mm a", message.timestamp)
+            // Optionally set avatar image here (already circular)
         }
     }
 
     class GeminiViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvMessage: TextView = itemView.findViewById(R.id.tvGeminiMessage)
         private val ivAvatar: ImageView = itemView.findViewById(R.id.ivGeminiAvatar)
+        private val tvTimestamp: TextView = itemView.findViewById(R.id.tvGeminiTimestamp)
         fun bind(message: ChatMessage) {
             tvMessage.text = message.text
-            // Optionally set avatar image here
+            tvTimestamp.text = android.text.format.DateFormat.format("hh:mm a", message.timestamp)
+            // Optionally set avatar image here (already circular)
         }
     }
 } 

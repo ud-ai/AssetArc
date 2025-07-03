@@ -12,17 +12,37 @@
         android:layout_height="32dp"
         android:src="@drawable/ic_launcher_foreground"
         android:layout_marginEnd="8dp"
-        android:contentDescription="Gemini avatar"/>
+        android:contentDescription="Gemini avatar"
+        android:background="@drawable/circle_avatar_bg"
+        android:clipToOutline="true"
+        android:scaleType="centerCrop"/>
 
-    <TextView
-        android:id="@+id/tvGeminiMessage"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:background="@drawable/bg_gemini_message"
-        android:textColor="#222222"
-        android:padding="10dp"
-        android:textSize="16sp"
-        android:maxWidth="240dp"
-        android:textStyle="normal"
-        android:layout_margin="6dp"/>
+        android:orientation="vertical"
+        android:gravity="start">
+        <TextView
+            android:id="@+id/tvGeminiMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_gemini_message_rounded"
+            android:textColor="#222222"
+            android:padding="10dp"
+            android:textSize="16sp"
+            android:maxWidth="240dp"
+            android:textStyle="normal"
+            android:layout_margin="6dp"
+            android:elevation="2dp"
+            android:clipToOutline="true"
+            android:outlineProvider="background" />
+        <TextView
+            android:id="@+id/tvGeminiTimestamp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#B0B0B0"
+            android:textSize="12sp"
+            android:layout_gravity="start"
+            android:paddingTop="2dp"/>
+    </LinearLayout>
 </LinearLayout> 

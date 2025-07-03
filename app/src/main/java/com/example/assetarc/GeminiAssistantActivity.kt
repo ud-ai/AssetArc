@@ -84,11 +84,12 @@ class GeminiAssistantActivity : AppCompatActivity() {
             btnSend.postDelayed({
                 btnSend.clearAnimation()
             }, 120)
-            // Existing send logic
             val userMessage = etChatInput.text.toString().trim()
             if (userMessage.isNotEmpty()) {
-                addMessageToChat(userMessage, true)
+                addMessageToChat(userMessage, true, System.currentTimeMillis())
                 etChatInput.text.clear()
+                btnSend.isEnabled = false
+                addMessageToChat("Gemini is typing...", false, System.currentTimeMillis())
                 sendMessageToGemini(userMessage)
             }
         }
@@ -192,47 +193,39 @@ class GeminiAssistantActivity : AppCompatActivity() {
         }
     }
 
-    private fun addMessageToChat(message: String, isUser: Boolean) {
-        chatMessages.add(ChatMessage(message, isUser))
+    private fun addMessageToChat(message: String, isUser: Boolean, timestamp: Long) {
+        chatMessages.add(ChatMessage(message, isUser, timestamp))
         chatAdapter.notifyItemInserted(chatMessages.size - 1)
-        rvChatMessages.scrollToPosition(chatMessages.size - 1)
+        rvChatMessages.post {
+            rvChatMessages.smoothScrollToPosition(chatMessages.size - 1)
+        }
     }
 
-    private fun sendMessageToGemini(userMessage: String) {
-        // Show loading message
-        val loadingMsg = "Gemini is thinking..."
-        addMessageToChat(userMessage, true)
-        addMessageToChat(loadingMsg, false)
-        saveMessageToFirestore("You: $userMessage")
-        // Prepare Gemini API request
+    private fun sendMessageToGemini(message: String) {
         val request = GeminiContentRequest(
-            contents = listOf(Content(parts = listOf(Part(text = userMessage))))
+            contents = listOf(Content(parts = listOf(Part(text = message))))
         )
         geminiApi.generateContent(request).enqueue(object : Callback<GeminiContentResponse> {
             override fun onResponse(call: Call<GeminiContentResponse>, response: Response<GeminiContentResponse>) {
-                android.util.Log.d("GeminiAPI", "Response: ${response.body()}")
-                android.util.Log.d("GeminiAPI", "ErrorBody: ${response.errorBody()?.string()}")
                 removeLastGeminiMessage()
                 val geminiText = response.body()?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                     ?: "Sorry, I couldn't generate a response."
-                addMessageToChat(geminiText, false)
+                addMessageToChat(geminiText, false, System.currentTimeMillis())
                 saveMessageToFirestore("Gemini: $geminiText")
+                btnSend.isEnabled = true
             }
             override fun onFailure(call: Call<GeminiContentResponse>, t: Throwable) {
                 removeLastGeminiMessage()
-                val errorMsg = "Sorry, there was an error: ${t.localizedMessage}"
-                addMessageToChat(errorMsg, false)
-                saveMessageToFirestore("Gemini: $errorMsg")
+                addMessageToChat("Error: ${t.localizedMessage}", false, System.currentTimeMillis())
+                btnSend.isEnabled = true
             }
         })
     }
 
     private fun removeLastGeminiMessage() {
-        // Remove the last Gemini message (loading) from chat
-        if (chatMessages.isNotEmpty() && !chatMessages.last().isUser && chatMessages.last().text.startsWith("Gemini is thinking")) {
-            val lastIdx = chatMessages.size - 1
-            chatMessages.removeAt(lastIdx)
-            chatAdapter.notifyItemRemoved(lastIdx)
+        if (chatMessages.isNotEmpty() && !chatMessages.last().isUser && chatMessages.last().text == "Gemini is typing...") {
+            chatMessages.removeAt(chatMessages.size - 1)
+            chatAdapter.notifyItemRemoved(chatMessages.size)
         }
     }
 
