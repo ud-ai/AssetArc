@@ -24,7 +24,6 @@
             android:theme="@style/Theme.AssetArc">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
@@ -58,6 +57,10 @@
             android:theme="@style/Theme.AssetArc" />
         <activity
             android:name=".GeminiAssistantActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AssetArc" />
+        <activity
+            android:name=".AccountActivity"
             android:exported="false"
             android:theme="@style/Theme.AssetArc" />
     </application>

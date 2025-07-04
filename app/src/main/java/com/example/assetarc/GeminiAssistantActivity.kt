@@ -22,6 +22,7 @@ import com.facebook.shimmer.ShimmerFrameLayout
 import android.view.View
 import androidx.recyclerview.widget.DefaultItemAnimator
 import android.view.animation.ScaleAnimation
+import android.content.Intent
 
 class GeminiAssistantActivity : AppCompatActivity() {
     private lateinit var tvPortfolioInsights: TextView
@@ -91,6 +92,25 @@ class GeminiAssistantActivity : AppCompatActivity() {
                 btnSend.isEnabled = false
                 addMessageToChat("Gemini is typing...", false, System.currentTimeMillis())
                 sendMessageToGemini(userMessage)
+            }
+        }
+
+        val bottomNav = findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigationView)
+        bottomNav.selectedItemId = R.id.nav_chat
+        bottomNav.setOnNavigationItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_dashboard -> {
+                    startActivity(Intent(this, DashboardActivity::class.java))
+                    overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right)
+                    true
+                }
+                R.id.nav_chat -> true // Already here
+                R.id.nav_account -> {
+                    startActivity(Intent(this, AccountActivity::class.java))
+                    overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right)
+                    true
+                }
+                else -> false
             }
         }
     }

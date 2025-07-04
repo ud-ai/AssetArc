@@ -44,6 +44,9 @@ interface GeminiApiService {
         fun create(): GeminiApiService {
             val apiKey = com.example.assetarc.BuildConfig.GEMINI_API_KEY
             val client = OkHttpClient.Builder()
+                .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
                 .addInterceptor { chain ->
                     val original = chain.request()
                     val url = original.url.newBuilder()

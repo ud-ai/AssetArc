@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import com.example.assetarc.ui.theme.AssetArcTheme
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.*
@@ -21,25 +22,96 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.assetarc.ui.theme.AssetArcTheme
-import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.CurrencyBitcoin
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material.icons.filled.Person
+import com.example.assetarc.CryptoScreen
+import com.example.assetarc.DashboardScreen
+import com.example.assetarc.IndianStocksScreen
+import com.example.assetarc.USStocksScreen
+
+sealed class Screen(val route: String, val label: String, val icon: @Composable () -> Unit) {
+    object Dashboard : Screen("dashboard", "Dashboard", { Icon(Icons.Filled.AccountBalanceWallet, contentDescription = "Dashboard") })
+    object Chat : Screen("chat", "Chat", { Icon(Icons.Outlined.Chat, contentDescription = "Chat") })
+    object Account : Screen("account", "Account", { Icon(Icons.Filled.Person, contentDescription = "Account") })
+    object IndianStocks : Screen("indian_stocks", "Indian Stocks", { Icon(Icons.Filled.ShowChart, contentDescription = "Indian Stocks") })
+    object USStocks : Screen("us_stocks", "US Stocks", { Icon(Icons.Filled.AttachMoney, contentDescription = "US Stocks") })
+    object Crypto : Screen("crypto", "Crypto", { Icon(Icons.Filled.CurrencyBitcoin, contentDescription = "Crypto") })
+    companion object {
+        val mainScreens = listOf(Dashboard, Chat, Account, IndianStocks, USStocks, Crypto)
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             AssetArcTheme {
-                StartScreen(onGetStarted = {
-                    startActivity(Intent(this, LoginActivity::class.java))
-                    finish()
-                })
+                var isLoggedIn by remember { mutableStateOf(false) }
+                if (!isLoggedIn) {
+                    StartScreen(onGetStarted = { isLoggedIn = true })
+                } else {
+                    MainNavScaffold()
+                }
             }
         }
     }
 }
+
+@Composable
+fun MainNavScaffold() {
+    val navController = rememberNavController()
+    var selectedIndex by remember { mutableStateOf(0) }
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                Screen.mainScreens.forEachIndexed { index, screen ->
+                    NavigationBarItem(
+                        selected = selectedIndex == index,
+                        onClick = {
+                            selectedIndex = index
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = screen.icon,
+                        label = { Text(screen.label) }
+                    )
+                }
+            }
+        }
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Dashboard.route,
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable(Screen.Dashboard.route) { DashboardScreen() }
+            composable(Screen.Chat.route) { ChatScreen() }
+            composable(Screen.Account.route) { AccountScreen() }
+            composable(Screen.IndianStocks.route) { IndianStocksScreen() }
+            composable(Screen.USStocks.route) { USStocksScreen() }
+            composable(Screen.Crypto.route) { CryptoScreen() }
+        }
+    }
+}
+
+// Stub composables for screens (replace with your actual implementations)
+@Composable fun ChatScreen() { Text("Chat", modifier = Modifier.fillMaxSize()) }
+@Composable fun AccountScreen() { Text("Account", modifier = Modifier.fillMaxSize()) }
 
 @Composable
 fun StartScreen(onGetStarted: () -> Unit) {

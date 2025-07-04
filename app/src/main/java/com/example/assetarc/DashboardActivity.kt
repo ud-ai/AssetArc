@@ -43,6 +43,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.CurrencyBitcoin
 
 class DashboardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -501,6 +504,63 @@ fun DashboardScreen() {
                 1 -> PortfolioTab(viewModel)
                 2 -> WatchlistTab(viewModel)
             }
+            Spacer(modifier = Modifier.weight(1f))
+            NavigationBar {
+                NavigationBarItem(
+                    selected = selectedTab == 0,
+                    onClick = {
+                        selectedTab = 0
+                        // Already on Dashboard, do nothing
+                    },
+                    icon = { Icon(Icons.Filled.AccountBalanceWallet, contentDescription = "Dashboard") },
+                    label = { Text("Dashboard") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 1,
+                    onClick = {
+                        selectedTab = 1
+                        context.startActivity(Intent(context, GeminiAssistantActivity::class.java))
+                    },
+                    icon = { Icon(Icons.Outlined.Chat, contentDescription = "Chat") },
+                    label = { Text("Chat") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = {
+                        selectedTab = 2
+                        context.startActivity(Intent(context, AccountActivity::class.java))
+                    },
+                    icon = { Icon(Icons.Default.AccountBalanceWallet, contentDescription = "Account") },
+                    label = { Text("Account") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 3,
+                    onClick = {
+                        selectedTab = 3
+                        context.startActivity(Intent(context, IndianStocksActivity::class.java))
+                    },
+                    icon = { Icon(Icons.Filled.ShowChart, contentDescription = "Indian Stocks") },
+                    label = { Text("Indian Stocks") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 4,
+                    onClick = {
+                        selectedTab = 4
+                        context.startActivity(Intent(context, USStocksActivity::class.java))
+                    },
+                    icon = { Icon(Icons.Filled.AttachMoney, contentDescription = "US Stocks") },
+                    label = { Text("US Stocks") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 5,
+                    onClick = {
+                        selectedTab = 5
+                        context.startActivity(Intent(context, CryptoActivity::class.java))
+                    },
+                    icon = { Icon(Icons.Filled.CurrencyBitcoin, contentDescription = "Crypto") },
+                    label = { Text("Crypto") }
+                )
+            }
         }
         
         error?.let { errorMessage ->
@@ -511,23 +571,6 @@ fun DashboardScreen() {
             ) {
                 Text(errorMessage)
             }
-        }
-
-        // Floating Action Button for Chat Assistant
-        FloatingActionButton(
-            onClick = {
-                context.startActivity(Intent(context, GeminiAssistantActivity::class.java))
-            },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(24.dp),
-            containerColor = Color(0xFF3B82F6)
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Chat,
-                contentDescription = "Open Chat Assistant",
-                tint = Color.White
-            )
         }
     }
 }
