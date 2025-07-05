@@ -8,84 +8,92 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:padding="16dp"
+        android:background="?attr/colorSurface">
 
         <!-- Portfolio Insights Section -->
-        <TextView
+        <com.google.android.material.textview.MaterialTextView
             android:id="@+id/tvPortfolioInsightsTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Portfolio Insights"
-            android:textStyle="bold"
-            android:textSize="18sp"
+            android:textAppearance="?attr/textAppearanceTitleLarge"
+            android:textColor="?attr/colorOnSurface"
             android:paddingBottom="8dp"/>
         <com.facebook.shimmer.ShimmerFrameLayout
             android:id="@+id/shimmerPortfolio"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:shimmer_auto_start="true">
-            <TextView
+            <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/tvPortfolioInsights"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Loading insights..."
+                android:textColor="?attr/colorOnSurface"
                 android:paddingBottom="16dp"/>
         </com.facebook.shimmer.ShimmerFrameLayout>
 
         <!-- News Summarization Section -->
-        <TextView
+        <com.google.android.material.textview.MaterialTextView
             android:id="@+id/tvNewsSummaryTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="News Summaries"
-            android:textStyle="bold"
-            android:textSize="18sp"
+            android:textAppearance="?attr/textAppearanceTitleLarge"
+            android:textColor="?attr/colorOnSurface"
             android:paddingBottom="8dp"/>
         <com.facebook.shimmer.ShimmerFrameLayout
             android:id="@+id/shimmerNews"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:shimmer_auto_start="true">
-            <TextView
+            <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/tvNewsSummary"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Loading news..."
+                android:textColor="?attr/colorOnSurface"
                 android:paddingBottom="16dp"/>
         </com.facebook.shimmer.ShimmerFrameLayout>
 
         <!-- Chat Section -->
-        <TextView
+        <com.google.android.material.textview.MaterialTextView
             android:id="@+id/tvChatTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Gemini Assistant Chat"
-            android:textStyle="bold"
-            android:textSize="18sp"
+            android:textAppearance="?attr/textAppearanceTitleLarge"
+            android:textColor="?attr/colorOnSurface"
             android:paddingBottom="8dp"/>
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvChatMessages"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:background="#F0F4F8"
+            android:background="?attr/colorSurfaceVariant"
             android:padding="8dp"/>
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:paddingTop="8dp">
-            <EditText
-                android:id="@+id/etChatInput"
+            <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="Ask Gemini..."/>
-            <Button
+                android:layout_weight="1">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etChatInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Ask Gemini..."/>
+            </com.google.android.material.textfield.TextInputLayout>
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSend"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Send"/>
+                android:text="Send"
+                style="@style/Widget.Material3.Button"/>
         </LinearLayout>
     </LinearLayout>
 
