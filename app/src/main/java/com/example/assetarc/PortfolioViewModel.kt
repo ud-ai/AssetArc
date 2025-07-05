@@ -56,6 +56,10 @@ class PortfolioViewModel : ViewModel() {
                 INSTANCE ?: PortfolioViewModel().also { INSTANCE = it }
             }
         }
+        
+        // Add a flag to track if portfolio has been loaded
+        @Volatile
+        private var isPortfolioLoaded = false
     }
 
     private val _portfolio = MutableStateFlow<List<PortfolioItem>>(emptyList())
@@ -75,18 +79,25 @@ class PortfolioViewModel : ViewModel() {
 
     private var priceUpdateJob: Job? = null
 
-    // Load portfolio from SharedPreferences on initialization
+    // Load portfolio from SharedPreferences on initialization (only once)
     fun loadPortfolio(context: Context) {
+        if (isPortfolioLoaded) {
+            Log.d("PortfolioViewModel", "Portfolio already loaded, skipping...")
+            return
+        }
+        
         val prefs = context.getSharedPreferences("portfolio_prefs", Context.MODE_PRIVATE)
         val portfolioJson = prefs.getString("portfolio", "[]")
         try {
             val type = object : TypeToken<List<PortfolioItem>>() {}.type
             val savedPortfolio = gson.fromJson<List<PortfolioItem>>(portfolioJson, type) ?: emptyList()
             _portfolio.value = savedPortfolio
+            isPortfolioLoaded = true
             Log.d("PortfolioViewModel", "Loaded portfolio with ${savedPortfolio.size} items")
         } catch (e: Exception) {
             Log.e("PortfolioViewModel", "Error loading portfolio", e)
             _portfolio.value = emptyList()
+            isPortfolioLoaded = true // Mark as loaded even if empty to prevent infinite retries
         }
     }
 
@@ -96,6 +107,17 @@ class PortfolioViewModel : ViewModel() {
         val portfolioJson = gson.toJson(_portfolio.value)
         prefs.edit().putString("portfolio", portfolioJson).apply()
         Log.d("PortfolioViewModel", "Saved portfolio with ${_portfolio.value.size} items")
+    }
+    
+    // Force reload portfolio (useful for debugging or when data corruption is suspected)
+    fun forceReloadPortfolio(context: Context) {
+        isPortfolioLoaded = false
+        loadPortfolio(context)
+    }
+    
+    // Get current portfolio size for debugging
+    fun getPortfolioSize(): Int {
+        return _portfolio.value.size
     }
 
     fun addAsset(type: AssetType, symbol: String, quantity: Double, context: Context) {

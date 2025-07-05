@@ -182,7 +182,7 @@ class USStockService {
             }
             
             // Return mock data if API fails
-            Log.d(TAG, "API failed, returning mock data for $symbol")
+            Log.w(TAG, "API failed, returning mock data for $symbol")
             getMockStockData(symbol)
             
         } catch (e: Exception) {
@@ -201,8 +201,11 @@ class USStockService {
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("Accept-Encoding", "gzip, deflate")
+                connection.connectTimeout = 8000 // Reduced from 10s
+                connection.readTimeout = 8000    // Reduced from 10s
+                connection.useCaches = true
                 
                 val responseCode = connection.responseCode
                 Log.d(TAG, "Yahoo Finance response code: $responseCode")

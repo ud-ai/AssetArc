@@ -74,6 +74,7 @@ import com.example.assetarc.Content
 import com.example.assetarc.Part
 import com.example.assetarc.GeminiContentResponse
 import androidx.compose.runtime.DisposableEffect
+import android.util.Log
 
 sealed class Screen(val route: String, val label: String, val icon: @Composable () -> Unit) {
     object Dashboard : Screen("dashboard", "Dashboard", { Icon(Icons.Filled.AccountBalanceWallet, contentDescription = "Dashboard") })
@@ -207,33 +208,121 @@ fun ChatScreen() {
     val context = LocalContext.current
     val firestore = FirebaseFirestore.getInstance()
     val userId = FirebaseAuth.getInstance().currentUser?.uid
-    val geminiApi = GeminiApiService.create()
+    val geminiApi = remember { GeminiApiService.create() }
     
     var messages by remember { mutableStateOf(listOf<ChatMessage>()) }
     var inputText by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var isInitialLoading by remember { mutableStateOf(true) }
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     
-    // Load chat history
+    // Cache for recent messages to avoid unnecessary Firestore calls
+    val messageCache = remember { mutableMapOf<String, ChatMessage>() }
+    
+    // Load chat history with optimization
     LaunchedEffect(Unit) {
         userId?.let { uid ->
-            firestore.collection("users").document(uid).collection("chatHistory")
-                .orderBy("timestamp")
-                .get()
-                .addOnSuccessListener { result ->
-                    val chatMessages = mutableListOf<ChatMessage>()
-                    for (doc in result) {
-                        val message = doc.getString("message") ?: ""
-                        val isUser = message.startsWith("You:")
-                        val cleanMsg = message.removePrefix("You: ").removePrefix("Gemini: ")
-                        chatMessages.add(ChatMessage(cleanMsg, isUser, doc.getLong("timestamp") ?: System.currentTimeMillis()))
+            try {
+                // Use limit and orderBy for better performance
+                firestore.collection("users").document(uid).collection("chatHistory")
+                    .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                    .limit(50) // Limit to last 50 messages for faster loading
+                    .get()
+                    .addOnSuccessListener { result ->
+                        val chatMessages = mutableListOf<ChatMessage>()
+                        for (doc in result) {
+                            val message = doc.getString("message") ?: ""
+                            val isUser = message.startsWith("You:")
+                            val cleanMsg = message.removePrefix("You: ").removePrefix("Gemini: ")
+                            val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
+                            
+                            val chatMessage = ChatMessage(cleanMsg, isUser, timestamp)
+                            chatMessages.add(chatMessage)
+                            
+                            // Cache the message
+                            messageCache[doc.id] = chatMessage
+                        }
+                        // Reverse to show in chronological order
+                        messages = chatMessages.reversed()
+                        isInitialLoading = false
                     }
-                    messages = chatMessages
-                }
+                    .addOnFailureListener { exception ->
+                        Log.e("ChatScreen", "Error loading chat history", exception)
+                        isInitialLoading = false
+                    }
+            } catch (e: Exception) {
+                Log.e("ChatScreen", "Error in chat history loading", e)
+                isInitialLoading = false
+            }
         }
+    }
+    
+    // Optimized function to send message
+    fun sendMessage(userMessage: String) {
+        if (userMessage.isBlank() || isLoading) return
+        
+        inputText = ""
+        isLoading = true
+        
+        // Add user message immediately for better UX
+        val newUserMessage = ChatMessage(userMessage, true, System.currentTimeMillis())
+        messages = messages + newUserMessage
+        
+        // Save to Firestore in background (non-blocking)
+        userId?.let { uid ->
+            val chatRef = firestore.collection("users").document(uid).collection("chatHistory")
+            val data = hashMapOf(
+                "message" to "You: $userMessage",
+                "timestamp" to System.currentTimeMillis()
+            )
+            chatRef.add(data).addOnFailureListener { exception ->
+                Log.e("ChatScreen", "Error saving user message", exception)
+            }
+        }
+        
+        // Send to Gemini with optimized request
+        val request = GeminiContentRequest(
+            contents = listOf(Content(parts = listOf(Part(text = userMessage))))
+        )
+        
+        geminiApi.generateContent(request).enqueue(object : Callback<GeminiContentResponse> {
+            override fun onResponse(call: Call<GeminiContentResponse>, response: Response<GeminiContentResponse>) {
+                isLoading = false
+                val geminiText = response.body()?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                    ?: "Sorry, I couldn't generate a response."
+                
+                val newGeminiMessage = ChatMessage(geminiText, false, System.currentTimeMillis())
+                messages = messages + newGeminiMessage
+                
+                // Save Gemini response to Firestore in background
+                userId?.let { uid ->
+                    val chatRef = firestore.collection("users").document(uid).collection("chatHistory")
+                    val data = hashMapOf(
+                        "message" to "Gemini: $geminiText",
+                        "timestamp" to System.currentTimeMillis()
+                    )
+                    chatRef.add(data).addOnFailureListener { exception ->
+                        Log.e("ChatScreen", "Error saving Gemini message", exception)
+                    }
+                }
+                
+                focusManager.clearFocus()
+                keyboardController?.hide()
+            }
+            
+            override fun onFailure(call: Call<GeminiContentResponse>, t: Throwable) {
+                isLoading = false
+                val errorMessage = ChatMessage("Error: ${t.localizedMessage}", false, System.currentTimeMillis())
+                messages = messages + errorMessage
+                Log.e("ChatScreen", "Gemini API call failed", t)
+                
+                focusManager.clearFocus()
+                keyboardController?.hide()
+            }
+        })
     }
     
     Column(
@@ -279,15 +368,30 @@ fun ChatScreen() {
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            items(messages) { message ->
-                ChatMessageItem(message = message)
-            }
-            if (isLoading) {
+            if (isInitialLoading) {
                 item {
-                    ChatMessageItem(
-                        message = ChatMessage("Typing...", false, System.currentTimeMillis()),
-                        isLoading = true
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            } else {
+                items(messages) { message ->
+                    ChatMessageItem(message = message)
+                }
+                if (isLoading) {
+                    item {
+                        ChatMessageItem(
+                            message = ChatMessage("Typing...", false, System.currentTimeMillis()),
+                            isLoading = true
+                        )
+                    }
                 }
             }
         }
@@ -316,126 +420,21 @@ fun ChatScreen() {
                         keyboardType = KeyboardType.Text
                     ),
                     keyboardActions = KeyboardActions(
-                        onSend = {
-                            if (inputText.isNotBlank() && !isLoading) {
-                                val userMessage = inputText.trim()
-                                inputText = ""
-                                isLoading = true
-                                
-                                // Add user message
-                                val newUserMessage = ChatMessage(userMessage, true, System.currentTimeMillis())
-                                messages = messages + newUserMessage
-                                
-                                // Save to Firestore
-                                userId?.let { uid ->
-                                    val chatRef = firestore.collection("users").document(uid).collection("chatHistory")
-                                    val data = hashMapOf(
-                                        "message" to "You: $userMessage",
-                                        "timestamp" to System.currentTimeMillis()
-                                    )
-                                    chatRef.add(data)
-                                }
-                                
-                                // Send to Gemini
-                                val request = GeminiContentRequest(
-                                    contents = listOf(Content(parts = listOf(Part(text = userMessage))))
-                                )
-                                geminiApi.generateContent(request).enqueue(object : Callback<GeminiContentResponse> {
-                                    override fun onResponse(call: Call<GeminiContentResponse>, response: Response<GeminiContentResponse>) {
-                                        isLoading = false
-                                        val geminiText = response.body()?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                                            ?: "Sorry, I couldn't generate a response."
-                                        
-                                        val newGeminiMessage = ChatMessage(geminiText, false, System.currentTimeMillis())
-                                        messages = messages + newGeminiMessage
-                                        
-                                        // Save Gemini response to Firestore
-                                        userId?.let { uid ->
-                                            val chatRef = firestore.collection("users").document(uid).collection("chatHistory")
-                                            val data = hashMapOf(
-                                                "message" to "Gemini: $geminiText",
-                                                "timestamp" to System.currentTimeMillis()
-                                            )
-                                            chatRef.add(data)
-                                        }
-                                    }
-                                    override fun onFailure(call: Call<GeminiContentResponse>, t: Throwable) {
-                                        isLoading = false
-                                        val errorMessage = ChatMessage("Error: ${t.localizedMessage}", false, System.currentTimeMillis())
-                                        messages = messages + errorMessage
-                                    }
-                                })
-                                
-                                focusManager.clearFocus()
-                                keyboardController?.hide()
-                            }
-                        }
+                        onSend = { sendMessage(inputText.trim()) }
                     ),
                     maxLines = 4,
                     shape = RoundedCornerShape(24.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                    )
+                    ),
+                    enabled = !isLoading
                 )
                 
                 Spacer(modifier = Modifier.width(8.dp))
                 
                 IconButton(
-                    onClick = {
-                        if (inputText.isNotBlank() && !isLoading) {
-                            val userMessage = inputText.trim()
-                            inputText = ""
-                            isLoading = true
-                            
-                            // Add user message
-                            val newUserMessage = ChatMessage(userMessage, true, System.currentTimeMillis())
-                            messages = messages + newUserMessage
-                            
-                            // Save to Firestore
-                            userId?.let { uid ->
-                                val chatRef = firestore.collection("users").document(uid).collection("chatHistory")
-                                val data = hashMapOf(
-                                    "message" to "You: $userMessage",
-                                    "timestamp" to System.currentTimeMillis()
-                                )
-                                chatRef.add(data)
-                            }
-                            
-                            // Send to Gemini
-                            val request = GeminiContentRequest(
-                                contents = listOf(Content(parts = listOf(Part(text = userMessage))))
-                            )
-                            geminiApi.generateContent(request).enqueue(object : Callback<GeminiContentResponse> {
-                                override fun onResponse(call: Call<GeminiContentResponse>, response: Response<GeminiContentResponse>) {
-                                    isLoading = false
-                                    val geminiText = response.body()?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                                        ?: "Sorry, I couldn't generate a response."
-                                    
-                                    val newGeminiMessage = ChatMessage(geminiText, false, System.currentTimeMillis())
-                                    messages = messages + newGeminiMessage
-                                    
-                                    // Save Gemini response to Firestore
-                                    userId?.let { uid ->
-                                        val chatRef = firestore.collection("users").document(uid).collection("chatHistory")
-                                        val data = hashMapOf(
-                                            "message" to "Gemini: $geminiText",
-                                            "timestamp" to System.currentTimeMillis()
-                                        )
-                                        chatRef.add(data)
-                                    }
-                                }
-                                override fun onFailure(call: Call<GeminiContentResponse>, t: Throwable) {
-                                    isLoading = false
-                                    val errorMessage = ChatMessage("Error: ${t.localizedMessage}", false, System.currentTimeMillis())
-                                    messages = messages + errorMessage
-                                }
-                            })
-                            
-                            focusManager.clearFocus()
-                            keyboardController?.hide()
-                        }
-                    },
+                    onClick = { sendMessage(inputText.trim()) },
                     modifier = Modifier
                         .size(48.dp)
                         .background(
@@ -456,7 +455,7 @@ fun ChatScreen() {
     
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
+        if (messages.isNotEmpty() && !isInitialLoading) {
             listState.animateScrollToItem(messages.size - 1)
         }
     }

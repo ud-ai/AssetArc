@@ -60,6 +60,33 @@ object ErrorHandler {
         }
     }
     
+    fun handleDataFetchError(context: Context, dataType: String, showToast: Boolean = true) {
+        val error = AppError.DataError("Unable to fetch $dataType data. Showing cached/mock data.")
+        logError(error)
+        
+        if (showToast) {
+            showErrorToast(error, context)
+        }
+    }
+    
+    fun handleApiRateLimitError(context: Context, apiName: String, showToast: Boolean = true) {
+        val error = AppError.NetworkError("$apiName rate limit reached. Please wait a moment and try again.")
+        logError(error)
+        
+        if (showToast) {
+            showErrorToast(error, context)
+        }
+    }
+    
+    fun handleStockDataError(context: Context, symbol: String, showToast: Boolean = true) {
+        val error = AppError.DataError("Unable to fetch data for $symbol. Please try again.")
+        logError(error)
+        
+        if (showToast) {
+            showErrorToast(error, context)
+        }
+    }
+    
     private fun logError(error: AppError) {
         when (error) {
             is AppError.NetworkError -> {
@@ -118,6 +145,15 @@ object ErrorHandler {
             is AppError.UnknownError -> false
             is ConnectException, is SocketTimeoutException, is UnknownHostException -> true
             else -> false
+        }
+    }
+    
+    fun getRetryDelay(attempt: Int): Long {
+        return when (attempt) {
+            1 -> 1000L // 1 second
+            2 -> 2000L // 2 seconds
+            3 -> 5000L // 5 seconds
+            else -> 10000L // 10 seconds
         }
     }
 }
