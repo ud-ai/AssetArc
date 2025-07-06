@@ -6,6 +6,9 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
+import com.bumptech.glide.request.RequestOptions
+import com.facebook.shimmer.ShimmerFrameLayout
 
 class ChatAdapter(private val messages: List<ChatMessage>) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     companion object {
@@ -48,10 +51,21 @@ class ChatAdapter(private val messages: List<ChatMessage>) : RecyclerView.Adapte
         private val tvMessage: TextView = itemView.findViewById(R.id.tvUserMessage)
         private val ivAvatar: ImageView = itemView.findViewById(R.id.ivUserAvatar)
         private val tvTimestamp: TextView = itemView.findViewById(R.id.tvUserTimestamp)
+        private val shimmerAvatar: ShimmerFrameLayout = itemView.findViewById(R.id.shimmerUserAvatar)
         fun bind(message: ChatMessage) {
             tvMessage.text = message.text
             tvTimestamp.text = android.text.format.DateFormat.format("hh:mm a", message.timestamp)
-            // Optionally set avatar image here (already circular)
+            shimmerAvatar.startShimmer()
+            shimmerAvatar.visibility = View.VISIBLE
+            Glide.with(itemView)
+                .load(R.drawable.ic_launcher_foreground)
+                .placeholder(R.drawable.ic_launcher_foreground)
+                .apply(RequestOptions.circleCropTransform())
+                .into(ivAvatar)
+            ivAvatar.postDelayed({
+                shimmerAvatar.stopShimmer()
+                shimmerAvatar.visibility = View.GONE
+            }, 400)
         }
     }
 
@@ -59,10 +73,21 @@ class ChatAdapter(private val messages: List<ChatMessage>) : RecyclerView.Adapte
         private val tvMessage: TextView = itemView.findViewById(R.id.tvGeminiMessage)
         private val ivAvatar: ImageView = itemView.findViewById(R.id.ivGeminiAvatar)
         private val tvTimestamp: TextView = itemView.findViewById(R.id.tvGeminiTimestamp)
+        private val shimmerAvatar: ShimmerFrameLayout = itemView.findViewById(R.id.shimmerGeminiAvatar)
         fun bind(message: ChatMessage) {
             tvMessage.text = message.text
             tvTimestamp.text = android.text.format.DateFormat.format("hh:mm a", message.timestamp)
-            // Optionally set avatar image here (already circular)
+            shimmerAvatar.startShimmer()
+            shimmerAvatar.visibility = View.VISIBLE
+            Glide.with(itemView)
+                .load(R.drawable.ic_launcher_foreground)
+                .placeholder(R.drawable.ic_launcher_foreground)
+                .apply(RequestOptions.circleCropTransform())
+                .into(ivAvatar)
+            ivAvatar.postDelayed({
+                shimmerAvatar.stopShimmer()
+                shimmerAvatar.visibility = View.GONE
+            }, 400)
         }
     }
 } 

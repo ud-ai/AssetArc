@@ -1,21 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="start"
-    android:padding="4dp">
+    android:padding="@dimen/spacing_xs">
 
-    <ImageView
-        android:id="@+id/ivGeminiAvatar"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:src="@drawable/ic_launcher_foreground"
-        android:layout_marginEnd="8dp"
-        android:contentDescription="Gemini avatar"
-        android:background="@drawable/circle_avatar_bg"
-        android:clipToOutline="true"
-        android:scaleType="centerCrop"/>
+    <com.facebook.shimmer.ShimmerFrameLayout
+        android:id="@+id/shimmerGeminiAvatar"
+        android:layout_width="48dp"
+        android:layout_height="48dp">
+        <ImageView
+            android:id="@+id/ivGeminiAvatar"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_launcher_foreground"
+            android:layout_marginEnd="@dimen/spacing_s"
+            android:contentDescription="Gemini avatar"
+            android:background="@drawable/circle_avatar_bg"
+            android:clipToOutline="true"
+            android:scaleType="centerCrop"/>
+    </com.facebook.shimmer.ShimmerFrameLayout>
 
     <LinearLayout
         android:layout_width="wrap_content"
@@ -28,11 +34,11 @@
             android:layout_height="wrap_content"
             android:background="@drawable/bg_gemini_message_rounded"
             android:textColor="#222222"
-            android:padding="10dp"
+            android:padding="@dimen/spacing_s"
             android:textSize="16sp"
             android:maxWidth="240dp"
             android:textStyle="normal"
-            android:layout_margin="6dp"
+            android:layout_margin="@dimen/spacing_xs"
             android:elevation="2dp"
             android:clipToOutline="true"
             android:outlineProvider="background" />
@@ -43,6 +49,6 @@
             android:textColor="#B0B0B0"
             android:textSize="12sp"
             android:layout_gravity="start"
-            android:paddingTop="2dp"/>
+            android:paddingTop="@dimen/spacing_xs"/>
     </LinearLayout>
 </LinearLayout> 

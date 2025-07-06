@@ -9,21 +9,21 @@
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:gravity="center"
-        android:padding="32dp"
+        android:padding="@dimen/spacing_xl"
         android:background="#F6F8FA">
 
         <com.google.android.material.card.MaterialCardView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="48dp"
+            app:cardCornerRadius="@dimen/card_corner_radius"
             app:cardElevation="2dp"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="16dp">
+            android:layout_marginTop="@dimen/spacing_m"
+            android:layout_marginBottom="@dimen/spacing_m">
             <ImageView
                 android:id="@+id/ivProfilePic"
-                android:layout_width="96dp"
-                android:layout_height="96dp"
+                android:layout_width="@dimen/profile_avatar_size"
+                android:layout_height="@dimen/profile_avatar_size"
                 android:src="@drawable/ic_launcher_foreground"
                 android:background="@drawable/circle_avatar_bg"
                 android:clipToOutline="true"
@@ -38,7 +38,7 @@
             android:textAppearance="?attr/textAppearanceTitleLarge"
             android:textColor="?attr/colorOnSurface"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="8dp"/>
+            android:layout_marginTop="@dimen/spacing_s"/>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnLoginLogout"
@@ -47,7 +47,7 @@
             android:text="Login/Logout"
             style="@style/Widget.Material3.Button"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="32dp"/>
+            android:layout_marginTop="@dimen/spacing_xl"/>
 
     </LinearLayout>
 

@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="end"
-    android:padding="4dp">
+    android:padding="@dimen/spacing_xs">
 
     <LinearLayout
         android:layout_width="wrap_content"
@@ -17,11 +18,11 @@
             android:layout_height="wrap_content"
             android:background="@drawable/bg_user_message_rounded"
             android:textColor="#FFFFFF"
-            android:padding="10dp"
+            android:padding="@dimen/spacing_s"
             android:textSize="16sp"
             android:maxWidth="240dp"
             android:textStyle="bold"
-            android:layout_margin="6dp"
+            android:layout_margin="@dimen/spacing_xs"
             android:elevation="2dp"
             android:backgroundTint="#3B82F6"
             android:backgroundTintMode="src_in"
@@ -34,16 +35,21 @@
             android:textColor="#B0B0B0"
             android:textSize="12sp"
             android:layout_gravity="end"
-            android:paddingTop="2dp"/>
+            android:paddingTop="@dimen/spacing_xs"/>
     </LinearLayout>
-    <ImageView
-        android:id="@+id/ivUserAvatar"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:src="@drawable/ic_launcher_foreground"
-        android:layout_marginStart="8dp"
-        android:contentDescription="User avatar"
-        android:background="@drawable/circle_avatar_bg"
-        android:clipToOutline="true"
-        android:scaleType="centerCrop"/>
+    <com.facebook.shimmer.ShimmerFrameLayout
+        android:id="@+id/shimmerUserAvatar"
+        android:layout_width="48dp"
+        android:layout_height="48dp">
+        <ImageView
+            android:id="@+id/ivUserAvatar"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_launcher_foreground"
+            android:layout_marginStart="@dimen/spacing_s"
+            android:contentDescription="User avatar"
+            android:background="@drawable/circle_avatar_bg"
+            android:clipToOutline="true"
+            android:scaleType="centerCrop"/>
+    </com.facebook.shimmer.ShimmerFrameLayout>
 </LinearLayout> 

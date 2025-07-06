@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Standard spacing values -->
+    <dimen name="spacing_xs">4dp</dimen>
+    <dimen name="spacing_s">8dp</dimen>
+    <dimen name="spacing_m">16dp</dimen>
+    <dimen name="spacing_l">24dp</dimen>
+    <dimen name="spacing_xl">32dp</dimen>
+    <dimen name="avatar_size">32dp</dimen>
+    <dimen name="profile_avatar_size">96dp</dimen>
+    <dimen name="card_corner_radius">48dp</dimen>
+</resources> 

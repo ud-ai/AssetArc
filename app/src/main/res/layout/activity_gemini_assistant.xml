@@ -8,7 +8,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="16dp"
+        android:padding="@dimen/spacing_m"
         android:background="?attr/colorSurface">
 
         <!-- Portfolio Insights Section -->
@@ -19,7 +19,7 @@
             android:text="Portfolio Insights"
             android:textAppearance="?attr/textAppearanceTitleLarge"
             android:textColor="?attr/colorOnSurface"
-            android:paddingBottom="8dp"/>
+            android:paddingBottom="@dimen/spacing_s"/>
         <com.facebook.shimmer.ShimmerFrameLayout
             android:id="@+id/shimmerPortfolio"
             android:layout_width="match_parent"
@@ -31,7 +31,7 @@
                 android:layout_height="wrap_content"
                 android:text="Loading insights..."
                 android:textColor="?attr/colorOnSurface"
-                android:paddingBottom="16dp"/>
+                android:paddingBottom="@dimen/spacing_m"/>
         </com.facebook.shimmer.ShimmerFrameLayout>
 
         <!-- News Summarization Section -->
@@ -42,7 +42,7 @@
             android:text="News Summaries"
             android:textAppearance="?attr/textAppearanceTitleLarge"
             android:textColor="?attr/colorOnSurface"
-            android:paddingBottom="8dp"/>
+            android:paddingBottom="@dimen/spacing_s"/>
         <com.facebook.shimmer.ShimmerFrameLayout
             android:id="@+id/shimmerNews"
             android:layout_width="match_parent"
@@ -54,7 +54,7 @@
                 android:layout_height="wrap_content"
                 android:text="Loading news..."
                 android:textColor="?attr/colorOnSurface"
-                android:paddingBottom="16dp"/>
+                android:paddingBottom="@dimen/spacing_m"/>
         </com.facebook.shimmer.ShimmerFrameLayout>
 
         <!-- Chat Section -->
@@ -65,7 +65,7 @@
             android:text="Gemini Assistant Chat"
             android:textAppearance="?attr/textAppearanceTitleLarge"
             android:textColor="?attr/colorOnSurface"
-            android:paddingBottom="8dp"/>
+            android:paddingBottom="@dimen/spacing_s"/>
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvChatMessages"
             android:layout_width="match_parent"
@@ -77,7 +77,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:paddingTop="8dp">
+            android:paddingTop="@dimen/spacing_s">
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -86,7 +86,8 @@
                     android:id="@+id/etChatInput"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Ask Gemini..."/>
+                    android:hint="Ask Gemini..."
+                    android:padding="@dimen/spacing_xs"/>
             </com.google.android.material.textfield.TextInputLayout>
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSend"
